@@ -59,43 +59,80 @@ function Nav() {
     <>
       <header className={`nav${solid || mega ? ' solid' : ''}`}>
         <div className="wrap nav__in">
-          <Logo />
+          <span onClick={() => setMega(null)} style={{ display: 'inline-flex' }}><Logo /></span>
           <nav className="nav__links" aria-label="Main">
+            {mega && (
+              <button
+                type="button"
+                className="nav__link nav__link--back"
+                onClick={() => setMega(null)}
+                aria-label="Back to page"
+              >
+                ← Back
+              </button>
+            )}
             {(['platform', 'cases'] as MegaKey[]).map((k) => (
-              <button key={k} className="nav__link" aria-expanded={mega === k} onClick={() => { setHover(0); setMega(mega === k ? null : k); }}>
+              <button
+                key={k}
+                className="nav__link"
+                aria-expanded={mega === k}
+                onClick={() => { setHover(0); setMega(mega === k ? null : k); }}
+              >
                 {k === 'platform' ? 'Platform +' : 'Use cases +'}
               </button>
             ))}
-            <a className="nav__link" href="#how">How it works</a>
-            <a className="nav__link" href="#proof">Proof</a>
-            <a className="nav__link" href="#faq">FAQ</a>
+            <a className="nav__link" href="#how" onClick={() => setMega(null)}>How it works</a>
+            <a className="nav__link" href="#proof" onClick={() => setMega(null)}>Proof</a>
+            <a className="nav__link" href="#faq" onClick={() => setMega(null)}>FAQ</a>
           </nav>
           <div className="nav__cta">
-            <Link className="btn btn--ghost btn--sm" to="/app">Open workspace</Link>
-            <Link className="btn btn--sm" to="/start">Try Athena <Chev /></Link>
+            <Link className="btn btn--ghost btn--sm" to="/app" onClick={() => setMega(null)}>Open workspace</Link>
+            <Link className="btn btn--sm" to="/start" onClick={() => setMega(null)}>Try Athena <Chev /></Link>
           </div>
         </div>
       </header>
       {m && (
         <div className="mega" onClick={(e) => e.target === e.currentTarget && setMega(null)}>
-          <div className="wrap mega__in">
-            <div>
-              <span className="label">{m.label}</span>
-              {m.items.map((it, i) => (
-                <button key={it[0]} className={`mega__big${i === hover ? ' on' : ''}`} onMouseEnter={() => setHover(i)} onFocus={() => setHover(i)}>{it[0]}</button>
-              ))}
+          <div className="wrap">
+            <div className="mega__bar">
+              <button
+                type="button"
+                className="mega__back"
+                onClick={() => setMega(null)}
+                aria-label="Back to page"
+              >
+                ← Back
+              </button>
+              <span className="label" style={{ marginBottom: 0, opacity: 0.6 }}>{m.label}</span>
             </div>
-            <div>
-              <span className="label">Handles</span>
-              <div className="mega__sub">
-                {m.items[hover]![1].map((s) => <Link key={s} to="/start" onClick={() => setMega(null)}>{s}</Link>)}
+            <div className="mega__in">
+              <div>
+                <span className="label">{m.label}</span>
+                {m.items.map((it, i) => (
+                  <button
+                    key={it[0]}
+                    type="button"
+                    className={`mega__big${i === hover ? ' on' : ''}`}
+                    onClick={() => setHover(i)}
+                    onMouseEnter={() => setHover(i)}
+                    onFocus={() => setHover(i)}
+                  >
+                    {it[0]}
+                  </button>
+                ))}
               </div>
+              <div>
+                <span className="label">Handles</span>
+                <div className="mega__sub">
+                  {m.items[hover]![1].map((s) => <Link key={s} to="/start" onClick={() => setMega(null)}>{s}</Link>)}
+                </div>
+              </div>
+              <div>
+                <span className="label">Spotlight</span>
+                <div className="mega__spot">{m.spot}</div>
+              </div>
+              <div className="mega__blurb">{m.blurb}</div>
             </div>
-            <div>
-              <span className="label">Spotlight</span>
-              <div className="mega__spot">{m.spot}</div>
-            </div>
-            <div className="mega__blurb">{m.blurb}</div>
           </div>
         </div>
       )}
