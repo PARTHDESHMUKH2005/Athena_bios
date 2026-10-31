@@ -1,5 +1,5 @@
 import type { Env, Fetcher } from './env.ts';
-import { nowSec } from './util.ts';
+import { nowSec, sha256Hex } from './util.ts';
 
 /**
  * Prune-specific receipt handling lives ONLY in this file (see athena.md 2.7).
@@ -218,15 +218,16 @@ function keyToDer(text: string): Uint8Array | null {
   }
 }
 
-export async function verifyLocal(rawReceipt: string, keyText: string): Promise<boolean> {
+/** `subtle` defaults to the runtime's WebCrypto; tests pass a stand-in to simulate a runtime without Ed25519. */
+export async function verifyLocal(rawReceipt: string, keyText: string, subtle: SubtleCrypto = crypto.subtle): Promise<boolean> {
   const der = keyToDer(keyText);
   if (!der) return false;
   const fields = JSON.parse(rawReceipt) as Record<string, unknown>;
   const sig = fields['receipt_signature'];
   if (typeof sig !== 'string') return false;
-  const key = await crypto.subtle.importKey('spki', der, { name: 'Ed25519' }, false, ['verify']);
+  const key = await subtle.importKey('spki', der, { name: 'Ed25519' }, false, ['verify']);
   const data = new TextEncoder().encode(canonicalForSigning(rawReceipt));
-  return crypto.subtle.verify({ name: 'Ed25519' }, key, b64ToBytes(sig), data);
+  return subtle.verify({ name: 'Ed25519' }, key, b64ToBytes(sig), data);
 }
 
 const baseUrl = (env: Pick<Env, 'PRUNE_BASE_URL'>) => env.PRUNE_BASE_URL.replace(/\/$/, '');
@@ -295,4 +296,126 @@ export async function verifyReceipt(env: Env, raw: string, fetchFn: Fetcher = fe
   if (hosted === true) return 'verified';
   if (hosted === false) return 'failed';
   return 'unverified';
+}
+
+/* ------------------------- detailed verification (with a reason) ------------------------- */
+
+export type VerifyReason =
+  | 'signature_mismatch'
+  | 'cost_mismatch'
+  | 'unknown_key'
+  | 'unreadable_receipt'
+  | 'ed25519_unavailable'
+  | 'key_unavailable'
+  | 'public_key_unreadable'
+  | 'no_receipt';
+
+/** Plain-language text for each reason. The 'unverified' wording for Ed25519 is the one the product promises. */
+export const VERIFY_REASON_TEXT: Record<VerifyReason, string> = {
+  signature_mismatch: 'Signature does not match',
+  cost_mismatch: 'Cost mismatch',
+  unknown_key: 'Unknown signing key',
+  unreadable_receipt: 'The receipt could not be read',
+  ed25519_unavailable: 'Could not verify in the browser worker. Verify offline.',
+  key_unavailable: 'Could not fetch Prune\u2019s public key. Verify offline.',
+  public_key_unreadable: 'Prune\u2019s public key could not be read. Verify offline.',
+  no_receipt: 'No receipt',
+};
+
+export interface VerifyDetail {
+  status: VerifyStatus;
+  reason: VerifyReason | null;
+}
+
+type LocalOutcome = 'ok' | 'bad' | 'unavailable' | 'unreadable_key';
+
+async function tryLocal(raw: string, keyText: string, subtle: SubtleCrypto): Promise<LocalOutcome> {
+  try {
+    return (await verifyLocal(raw, keyText, subtle)) ? 'ok' : 'bad';
+  } catch (e) {
+    return (e as { name?: string } | undefined)?.name === 'NotSupportedError' ? 'unavailable' : 'unreadable_key';
+  }
+}
+
+/**
+ * The signing key id is not part of the signed payload, so a signature check alone cannot notice it being
+ * edited. We remember the key id first seen together with each public key (trust on first use) and refuse a
+ * different id for the same key. UNVERIFIED against the real service: Phase 0 must confirm how key ids work.
+ */
+async function keyIdIsKnown(env: Env, keyText: string, fields: Record<string, unknown>, remember: boolean): Promise<boolean> {
+  const id = fields['receipt_signing_key_id'];
+  if (typeof id !== 'string') return true;
+  const hash = await sha256Hex(keyText.trim());
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'prune_known_key'").first<{ value: string }>();
+  let known: { hash?: string; id?: string } = {};
+  try {
+    known = row ? (JSON.parse(row.value) as typeof known) : {};
+  } catch {
+    known = {};
+  }
+  if (known.hash !== hash) {
+    if (!remember) return true;
+    await env.DB.prepare(
+      `INSERT INTO settings(key, value, updated_at) VALUES ('prune_known_key', ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    )
+      .bind(JSON.stringify({ hash, id }), nowSec())
+      .run();
+    return true;
+  }
+  return known.id === id;
+}
+
+/**
+ * Like verifyReceipt, but returns the reason and applies two extra checks after the signature passes:
+ * the signing key id is the one we know, and the cost inside the signed receipt equals the cost we recorded.
+ * 'unverified' is returned when verification could not run (for example a runtime without Ed25519), never
+ * 'verified'. Nothing is written except the cached public key and the remembered key id.
+ */
+export async function verifyReceiptDetailed(
+  env: Env,
+  raw: string | null,
+  fetchFn: Fetcher = fetch,
+  opts: { expectedCostMicro?: number | null; subtle?: SubtleCrypto; remember?: boolean } = {},
+): Promise<VerifyDetail> {
+  if (!raw) return { status: 'missing', reason: 'no_receipt' };
+  const subtle = opts.subtle ?? crypto.subtle;
+  let fields: Record<string, unknown>;
+  try {
+    parseLossless(raw);
+    fields = JSON.parse(raw) as Record<string, unknown>;
+    if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) throw new SyntaxError('not an object');
+  } catch {
+    return { status: 'failed', reason: 'unreadable_receipt' };
+  }
+  if (typeof fields['receipt_signature'] !== 'string') return { status: 'failed', reason: 'signature_mismatch' };
+
+  let key = (await cachedPublicKey(env)) ?? (await fetchPublicKey(env, fetchFn));
+  let local: LocalOutcome | null = null;
+  if (key) {
+    local = await tryLocal(raw, key, subtle);
+    if (local === 'bad') {
+      const fresh = await fetchPublicKey(env, fetchFn); // the key may have been rotated
+      if (fresh && fresh !== key) {
+        key = fresh;
+        local = await tryLocal(raw, key, subtle);
+      }
+    }
+  }
+  if (local === 'unavailable') return { status: 'unverified', reason: 'ed25519_unavailable' }; // never a green badge
+  if (local === 'unreadable_key') return { status: 'unverified', reason: 'public_key_unreadable' };
+  if (local !== 'ok') {
+    // Only a local mismatch (or no key at all) asks Prune's own check for a second opinion.
+    const hosted = await hostedVerify(env, raw, fetchFn);
+    if (hosted !== true) {
+      if (local === 'bad' || hosted === false) return { status: 'failed', reason: 'signature_mismatch' };
+      return { status: 'unverified', reason: 'key_unavailable' };
+    }
+  } else if (key && !(await keyIdIsKnown(env, key, fields, opts.remember !== false))) {
+    return { status: 'failed', reason: 'unknown_key' };
+  }
+
+  const signed = usdField(fields, COST_KEYS);
+  if (opts.expectedCostMicro != null && signed !== null && signed !== opts.expectedCostMicro) return { status: 'failed', reason: 'cost_mismatch' };
+  return { status: 'verified', reason: null };
 }

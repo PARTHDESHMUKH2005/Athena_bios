@@ -25,7 +25,11 @@ Legend: **Tested** = automated test in this repo exercises it against real SQLit
 | Rate limits (per IP for sessions, per workspace otherwise) | 2.9 | `src/ratelimit.ts` | Session limit tested. Message and upload buckets exist; only the session one has a dedicated test |
 | Kill switch | 2.9 | `src/killswitch.ts` | `KILL_SWITCH` env var tested. The settings-table switch (stretch endpoint) is read but untested |
 | Janitor (stuck reservations, stuck calls, retention) | 2.2 | `src/janitor.ts` | Tested for reserved and sent rows. Retention delete untested |
-| Usage, receipt export, summary export | 3.3 | `app.ts` (E26, E27, E30) | Tested |
+| Usage, receipt export, summary export | 3.3 | `app.ts` (E30), `routes/usage.ts` (E26), `routes/export.ts` (E27) | Tested |
+| Receipt read and verify (with tamper check) | 3.3 | `routes/receipts.ts` (E23, E24), `receipts.ts` | Tested on mock |
+| Citation and number check, abstaining | verify prompt 4 | `gate.ts`, `extras.ts` | Tested on mock; error rate measured on 46 labelled examples |
+| Naive baseline | verify prompt 2 | `baseline.ts` | Tested on mock |
+| Protected numbers (extractive pruning) | verify prompt 6 | `protected.ts` | Pure functions with tests, not yet wired into `context.ts` |
 | **Output guardrail**: redact secrets, remove links the document never contained, remove download-and-run commands; also applied to stored memory summaries | 2.9 | `src/outputscan.ts` | Tested (`injection.test.ts`): a model that obeys a payload still cannot leak the Prune key, a key-shaped string, a foreign link or a shell one-liner, and legitimate document links survive |
 | Worker entry + cron | 2.1 | `src/index.ts`, `wrangler.jsonc` | Written, **not deployed** |
 
