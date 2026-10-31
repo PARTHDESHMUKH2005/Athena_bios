@@ -18,7 +18,8 @@
     "bench:injection": "node --env-file-if-exists=.env bench/injection.mjs",
     "dev:stack": "node tools/dev-server.mjs",
     "web": "npm --prefix web run dev",
-    "web:build": "npm --prefix web run build"
+    "web:build": "npm --prefix web run build",
+    "check": "npm run typecheck && npm test && npm run check:caller && npm --prefix web run typecheck"
   },
   "dependencies": {
     "hono": "^4.13.0",
