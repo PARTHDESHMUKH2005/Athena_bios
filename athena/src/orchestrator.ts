@@ -282,7 +282,9 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
           runId: `${p.asstId}:r${attemptNo}`,
           purpose,
           workload: p.mode === 'extract' ? 'structured_extraction' : 'rag',
-          cache: p.mode === 'answer' ? 'normalized' : 'exact',
+          // Never 'normalized' or 'semantic' for answers: on the real Prune a different question was served a cached answer
+          // to an earlier one (the document context dominates the prompt). 'exact' only matches an identical request.
+          cache: 'exact',
           tier,
           messages: built.messages,
           promptTokens: built.promptTokens,

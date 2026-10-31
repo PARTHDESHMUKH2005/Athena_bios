@@ -154,6 +154,14 @@ describe('through the whole app', () => {
     assert.equal(mock.calls.length, 2);
   });
 
+  test('answers use exact caching only, so one question never gets another one cached answer', async () => {
+    const { h, tok, chat } = await ask();
+    await h.askQ(tok, chat, 'What are the payment terms?');
+    await h.askQ(tok, chat, 'What is the delivery time?');
+    assert.ok(mock.calls.length >= 2);
+    for (const c of mock.calls) assert.equal(c.headers['x-prune-cache'], 'exact');
+  });
+
   test('a per-tier output floor reaches the model request (for models that think)', async () => {
     const { h, tok, chat } = await ask({ MODEL_TIERS: JSON.stringify({ economy: { minOutputTokens: 3000 }, standard: { minOutputTokens: 3000 } }) });
     await h.askQ(tok, chat, 'What are the payment terms?');
