@@ -5,8 +5,10 @@
 //   good answer   = a finished answer that passes the no-AI citation and number check (src/gate.ts). Summaries and
 //                   extractions have their own validation and count as good when finished.
 //   CPGA          = spend on ALL calls of the conversation (retries and escalations included) / good answers.
-//   spend         = cost_micro of calls that returned a signed receipt. Charges that are only an estimate (billing
-//                   uncertain) are reported separately and are not mixed in.
+//   spend         = cost_micro of calls that returned a signed receipt, plus calls from a provider that issues no receipts
+//                   at all (the Groq path), whose token-based cost is reported in spend_estimated_usd so it is never
+//                   passed off as signed. Charges that are only an estimate because billing was uncertain are
+//                   reported separately (uncertain_calls) and are not mixed in.
 import { getBudget } from '../budget.ts';
 import { microToUsd, parseJsonSafe } from '../util.ts';
 import type { AppT } from './shared.ts';
@@ -19,6 +21,7 @@ interface CallRow {
   model_used: string | null;
   status: string;
   cost_micro: number | null;
+  verify_reason?: string | null;
   verify_status: string;
   has_receipt: number;
   idempotency_key: string;
@@ -83,14 +86,14 @@ export function registerUsageRoutes(app: AppT): void {
     const calls = (
       await db
         .prepare(
-          `SELECT id, chat_id, purpose, tier, model_used, status, cost_micro, verify_status, receipt_json IS NOT NULL AS has_receipt, idempotency_key, created_at
+          `SELECT id, chat_id, purpose, tier, model_used, status, cost_micro, verify_status, receipt_json IS NOT NULL AS has_receipt, verify_reason, idempotency_key, created_at
            FROM llm_calls WHERE workspace_id = ? ORDER BY created_at, rowid`,
         )
         .bind(ws)
         .all<CallRow>()
     ).results;
 
-    const stat = new Map<string, { good: number; attempted: number; spend: number; uncertain: number }>();
+    const stat = new Map<string, { good: number; attempted: number; spend: number; uncertain: number; estimated?: number }>();
     const of = (chat: string) => {
       let s = stat.get(chat);
       if (!s) stat.set(chat, (s = { good: 0, attempted: 0, spend: 0, uncertain: 0 }));
@@ -109,20 +112,27 @@ export function registerUsageRoutes(app: AppT): void {
     for (const k of calls) {
       if (!k.chat_id) continue;
       if (k.status === 'ok' && k.has_receipt) of(k.chat_id).spend += k.cost_micro ?? 0;
-      else if (k.status === 'unknown_cost') of(k.chat_id).uncertain++;
+      else if (k.status === 'ok' && k.verify_reason === 'no_receipt') {
+        const st = of(k.chat_id);
+        st.spend += k.cost_micro ?? 0;
+        st.estimated = (st.estimated ?? 0) + (k.cost_micro ?? 0);
+      } else if (k.status === 'unknown_cost') of(k.chat_id).uncertain++;
     }
-    const total = { good: 0, attempted: 0, spend: 0, uncertain: 0 };
+    const total = { good: 0, attempted: 0, spend: 0, uncertain: 0, estimated: 0 };
     for (const s of stat.values()) {
       total.good += s.good;
       total.attempted += s.attempted;
       total.spend += s.spend;
       total.uncertain += s.uncertain;
+      total.estimated += s.estimated ?? 0;
     }
-    const cpgaOf = (s: { good: number; attempted: number; spend: number; uncertain: number }) => ({
+    const cpgaOf = (s: { good: number; attempted: number; spend: number; uncertain: number; estimated?: number }) => ({
       good_answers: s.good,
       attempted: s.attempted,
       success_rate: ratio(s.good, s.attempted),
       spend_usd: microToUsd(s.spend),
+      // Part of spend_usd that comes from token counts, not a signed receipt (the Groq path). 0 on Prune.
+      spend_estimated_usd: microToUsd(s.estimated ?? 0),
       cost_per_request_usd: s.attempted ? microToUsd(Math.round(s.spend / s.attempted)) : null,
       cpga_usd: s.good ? microToUsd(Math.round(s.spend / s.good)) : null,
       // The gate is deterministic code and costs nothing; there is no model judge, so both figures match.

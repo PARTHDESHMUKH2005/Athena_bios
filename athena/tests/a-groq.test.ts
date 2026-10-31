@@ -206,3 +206,28 @@ describe('parallel Groq model path', () => {
     for (const t of Object.values(DEFAULT_GROQ_TIERS)) assert.ok(!t.model.startsWith('gemini/'), t.model);
   });
 });
+
+describe('Groq usage accounting', () => {
+  test('Groq spend counts in cost per good answer and is labelled as estimated', async () => {
+    const { createApp } = await import('../src/app.ts');
+    const env = await makeEnv(unusedPrune, { ...base, DEFAULT_BUDGET_USD: '0.25', DOC_LIMIT_PER_MIN: '100', MSG_LIMIT_PER_MIN: '100' });
+    const app = createApp({ llm: { sleep: noSleep, fetch: scripted(ok()).f } });
+    const exec = { waitUntil: (p: Promise<unknown>) => void p.catch(() => undefined), passThroughOnException() {} };
+    const call = async (method: string, path: string, tok: string | null, body?: unknown) => {
+      const res = await app.request(path, { method, headers: { ...(tok ? { authorization: `Bearer ${tok}` } : {}), 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }, env, exec as never);
+      return { status: res.status, json: (await res.json().catch(() => null)) as any };
+    };
+    const tok = (await call('POST', '/api/session', null, {})).json.token;
+    const d = (await call('POST', '/api/documents', tok, { filename: 'a.pdf', size_bytes: 10, page_count: 1, pack: 'general' })).json.document_id;
+    await call('PUT', `/api/documents/${d}/file`, tok, undefined);
+    await call('POST', `/api/documents/${d}/pages`, tok, { pages: [{ page_no: 1, text: 'The invoice is due within fourteen days of receipt.' }] });
+    await call('POST', `/api/documents/${d}/finalize`, tok, { ocr: 'skip', auto_summary: false });
+    const chat = (await call('POST', '/api/chats', tok, { document_ids: [d] })).json.chat_id;
+    const r = await call('POST', `/api/chats/${chat}/messages`, tok, { client_msg_id: 'q1', content: 'When is the invoice due?', mode: 'answer', output: 'normal' });
+    assert.equal(r.status, 200);
+    const u = (await call('GET', '/api/usage', tok)).json;
+    assert.ok(u.cpga.spend_usd > 0, 'spend must not read zero when money was spent');
+    assert.equal(u.cpga.spend_estimated_usd, u.cpga.spend_usd);
+    assert.equal(u.totals.receipts, 0);
+  });
+});

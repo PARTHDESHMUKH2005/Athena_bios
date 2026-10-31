@@ -77,3 +77,8 @@ Built from the "Verify" build prompt, additive to the existing engine. All new w
 - `athena/src/llm-groq.ts` is a second model door with the same contract as `llm.ts` (reserve, ledger, bounded retries, billing-uncertain, settle); `LLM_PROVIDER=groq` selects it, `llm.ts` hands over in two lines. Tiers in `tiers.ts` (`DEFAULT_GROQ_TIERS`, `GROQ_MODEL_TIERS`), env vars appended to `env.ts`. The single-caller guard now allows the Groq host in that one file. 14 tests in `tests/a-groq.test.ts` (fake fetch); one live call on each tier passed.
 - Differences to know: no signed receipts (cost is an estimate, receipt shown as missing), no Groq-side cap or idempotency or cache, and a small tokens-per-minute limit. Prices are from memory and unverified.
 - The Groq key was pasted into a chat: rotate it. It is only in the gitignored `athena/.env`.
+
+## 2026-10-31: whole app run on Groq
+- Ran the real API (in-memory database) on Groq with a synthetic 8-page contract and 6 real questions: 6/6 correct, each citing the right page, total about $0.0014, mostly the economical tier (`openai/gpt-oss-20b`; one question went to `qwen/qwen3.8-27b`). Timeline, summary export and budget all worked; receipts show as missing, as designed.
+- Found and fixed: cost per good answer read $0 on Groq because spend counted only signed receipts. `/api/usage` now counts Groq's token-based cost and reports the part that is estimated as `spend_estimated_usd`.
+- Not covered: the browser UI on Groq, a PDF upload through the real browser, a long document (tokens-per-minute limit), deployment.
