@@ -1,5 +1,5 @@
 # Athena
-
+ 
 Ask any document anything, see what each answer cost, and verify the receipt. Built for the FORGE "Ship It Lean: AI Apps on a Budget" track: every model call goes through Prune, provider keys stay out of the code, and spending is checked before each call.
 
 | Path | What |
