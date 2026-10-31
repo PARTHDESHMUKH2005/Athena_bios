@@ -1,7 +1,7 @@
 // Test harness: a D1-compatible adapter over node:sqlite (real SQLite with FTS5), an in-memory R2,
 // and the mock Prune. Tests therefore run the real Worker code, not stubs of it.
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 // @ts-ignore plain JS module
 import { startMock } from '../tools/mock-prune/mock.mjs';
 import type { Env } from '../src/env.ts';
@@ -44,7 +44,9 @@ export class FakeD1 {
   constructor() {
     this.raw = new DatabaseSync(':memory:');
     this.raw.exec('PRAGMA foreign_keys = ON');
-    this.raw.exec(readFileSync(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8'));
+    // Every migration in order, the same way wrangler applies them.
+    const dir = new URL('../migrations/', import.meta.url);
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.sql')).sort()) this.raw.exec(readFileSync(new URL(f, dir), 'utf8'));
   }
   prepare(sql: string) {
     return new FakeStmt(this.raw, sql);

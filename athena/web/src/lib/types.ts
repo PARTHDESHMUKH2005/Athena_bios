@@ -51,6 +51,23 @@ export interface Usage {
   cost_usd: number;
   cache_hit: boolean;
   verify_status: 'verified' | 'failed' | 'unverified' | 'missing' | string;
+  /** Signed by Prune. Null when the receipt carries no such field. */
+  cost_without_prune_usd?: number | null;
+  /** Athena's own estimate, not signed. */
+  naive_baseline_usd?: number | null;
+}
+
+export interface GateFailure {
+  type: 'quote' | 'number' | 'page';
+  detail: string;
+}
+/** Result of the no-AI citation and number check. */
+export interface Gate {
+  pass: boolean;
+  failures: GateFailure[];
+  abstained: boolean;
+  mode: 'quotes' | 'pages_only';
+  summary: string;
 }
 
 export type Mode = 'answer' | 'summarize' | 'extract';
@@ -68,6 +85,7 @@ export interface Message {
   trace: TraceStep[];
   created_at: number;
   usage?: Usage | null;
+  gate?: Gate | null;
 }
 
 export interface ChatSummary {
@@ -96,6 +114,61 @@ export interface UsageReport {
   };
   by_chat: { chat_id: string; answers: number; cost_usd: number }[];
   series: { chat_id: string; n: number; cost_usd: number }[];
+  /** Cost per good answer and the checker's own error rate (older servers omit these). */
+  cpga?: Cpga;
+  success_rate?: number | null;
+  gate?: GateStats;
+  attempts_by_answer?: AttemptsByAnswer[];
+}
+
+export interface Cpga {
+  good_answers: number;
+  attempted: number;
+  success_rate: number | null;
+  spend_usd: number;
+  cost_per_request_usd: number | null;
+  cpga_usd: number | null;
+  cpga_excluding_checker_usd: number | null;
+  cpga_including_judge_usd: number | null;
+  uncertain_calls: number;
+}
+export interface GateStats {
+  measured: boolean;
+  n: number;
+  false_pass_rate: number | null;
+  false_fail_rate: number | null;
+  last_run: number | null;
+}
+export interface AttemptsByAnswer {
+  message_id: string;
+  chat_id: string;
+  good: boolean;
+  attempts: { call_id: string; rung: 'first' | 'escalation'; tier: string; model: string | null; status: string; cost_usd: number | null; verify_status: string }[];
+}
+
+export interface VerifyResult {
+  verify_status: 'verified' | 'failed' | 'unverified' | 'missing' | string;
+  reason?: string | null;
+  reason_text?: string | null;
+  verified_at?: number | null;
+  override?: boolean;
+  saved?: boolean;
+}
+
+/** Extra fields on GET /api/receipts/:call_id. All optional so an older server still works. */
+export interface ReceiptExtras {
+  verify?: { status: string; reason: string | null; reason_text: string | null; verified_at: number | null };
+  cost?: { actual_usd: number | null; without_prune_usd: number | null; naive_baseline_usd: number | null };
+  baseline?: {
+    formula_version: string;
+    formula: string;
+    inputs_signed: boolean;
+    inputs_note: string;
+    tooltip: string;
+    savings_note: string;
+    naive_input_tokens: number | null;
+    inputs: { full_document_tokens: number; full_chat_history_tokens: number; question_tokens: number; system_tokens: number; output_tokens: number; model: string };
+  } | null;
 }
 
 export interface ReceiptView {
@@ -108,6 +181,7 @@ export interface ReceiptView {
     attempt: number;
     cost_usd: number | null;
     cost_without_prune_usd: number | null;
+    est_usd?: number;
     cache_hit: boolean;
     prompt_tokens: number | null;
     completion_tokens: number | null;
@@ -117,6 +191,8 @@ export interface ReceiptView {
   receipt_json: string | null;
   verify_status: string;
 }
+
+export type ReceiptViewFull = ReceiptView & ReceiptExtras;
 
 export interface AskResult {
   message: Message;

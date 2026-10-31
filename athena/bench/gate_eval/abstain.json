@@ -1,0 +1,22 @@
+{
+  "document": [
+    "TERMS AND CONDITIONS\nThis agreement is between the supplier and the customer.\nPayment is due within 30 days of the invoice date. Late fees apply after 45 days.",
+    "DELIVERY\nGoods are delivered within 10 business days of the order. Risk passes on delivery.",
+    "TERMINATION\nEither party may terminate with 60 days written notice. Fees already paid are not refunded.",
+    "CONFIDENTIALITY\nEach party keeps the other's information confidential for five years after the agreement ends."
+  ],
+  "questions": [
+    { "q": "What are the payment terms?", "answerable": true },
+    { "q": "How long is the notice period for termination?", "answerable": true },
+    { "q": "When are goods delivered?", "answerable": true },
+    { "q": "How long does confidentiality last?", "answerable": true },
+    { "q": "Are fees refunded after termination?", "answerable": true },
+    { "q": "When does risk pass to the customer?", "answerable": true },
+    { "q": "What is the airspeed velocity of an unladen swallow?", "answerable": false },
+    { "q": "Who is the chief executive officer?", "answerable": false },
+    { "q": "What is the warranty period?", "answerable": false },
+    { "q": "Which court has jurisdiction?", "answerable": false },
+    { "q": "What colour is the logo?", "answerable": false },
+    { "q": "How many employees does the supplier have?", "answerable": false }
+  ]
+}

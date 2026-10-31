@@ -1,0 +1,182 @@
+{
+  "generated_at": "2026-10-31T15:25:13.975Z",
+  "gate": {
+    "n": 46,
+    "true_pass": 24,
+    "true_fail": 14,
+    "false_pass": 7,
+    "false_fail": 1,
+    "precision": 0.7741935483870968,
+    "recall": 0.96,
+    "false_pass_rate": 0.15217391304347827,
+    "false_fail_rate": 0.021739130434782608,
+    "errors": [
+      {
+        "id": "g33",
+        "label": "not_supported",
+        "gate": "pass",
+        "note": "contradiction with no figures (the gate cannot see this)",
+        "detail": ""
+      },
+      {
+        "id": "g34",
+        "label": "not_supported",
+        "gate": "pass",
+        "note": "a real quote used to say the opposite",
+        "detail": ""
+      },
+      {
+        "id": "g35",
+        "label": "not_supported",
+        "gate": "pass",
+        "note": "both figures exist on the page but are swapped",
+        "detail": ""
+      },
+      {
+        "id": "g36",
+        "label": "not_supported",
+        "gate": "pass",
+        "note": "an invented claim attached to a real quote",
+        "detail": ""
+      },
+      {
+        "id": "g41",
+        "label": "not_supported",
+        "gate": "pass",
+        "note": "right figure, wrong currency",
+        "detail": ""
+      },
+      {
+        "id": "g42",
+        "label": "not_supported",
+        "gate": "pass",
+        "note": "right figure, wrong unit",
+        "detail": ""
+      },
+      {
+        "id": "g43",
+        "label": "not_supported",
+        "gate": "pass",
+        "note": "wrong figure written in words",
+        "detail": ""
+      },
+      {
+        "id": "g45",
+        "label": "supported",
+        "gate": "fail",
+        "note": "known limit: a European dot-as-thousands answer against a plain 1000 page (human: same number)",
+        "detail": "number 1.000 not found on page 1"
+      }
+    ]
+  },
+  "abstain": {
+    "n": 12,
+    "strengths": [
+      {
+        "q": "What are the payment terms?",
+        "answerable": true,
+        "strength": 0.0000019961472735548736
+      },
+      {
+        "q": "How long is the notice period for termination?",
+        "answerable": true,
+        "strength": 0.000001622025198320112
+      },
+      {
+        "q": "When are goods delivered?",
+        "answerable": true,
+        "strength": 0.000001622025198320112
+      },
+      {
+        "q": "How long does confidentiality last?",
+        "answerable": true,
+        "strength": 0.0000016373056994818652
+      },
+      {
+        "q": "Are fees refunded after termination?",
+        "answerable": true,
+        "strength": 0.000003618172471874986
+      },
+      {
+        "q": "When does risk pass to the customer?",
+        "answerable": true,
+        "strength": 0.000001622025198320112
+      },
+      {
+        "q": "What is the airspeed velocity of an unladen swallow?",
+        "answerable": false,
+        "strength": 0
+      },
+      {
+        "q": "Who is the chief executive officer?",
+        "answerable": false,
+        "strength": 0
+      },
+      {
+        "q": "What is the warranty period?",
+        "answerable": false,
+        "strength": 0
+      },
+      {
+        "q": "Which court has jurisdiction?",
+        "answerable": false,
+        "strength": 0
+      },
+      {
+        "q": "What colour is the logo?",
+        "answerable": false,
+        "strength": 0
+      },
+      {
+        "q": "How many employees does the supplier have?",
+        "answerable": false,
+        "strength": 8.11012599160056e-7
+      }
+    ],
+    "sweep": [
+      {
+        "min_strength": 0,
+        "answerable_kept": 6,
+        "answerable_total": 6,
+        "unanswerable_abstained": 5,
+        "unanswerable_total": 6
+      },
+      {
+        "min_strength": 8.11012599160056e-7,
+        "answerable_kept": 6,
+        "answerable_total": 6,
+        "unanswerable_abstained": 5,
+        "unanswerable_total": 6
+      },
+      {
+        "min_strength": 0.000001622025198320112,
+        "answerable_kept": 6,
+        "answerable_total": 6,
+        "unanswerable_abstained": 6,
+        "unanswerable_total": 6
+      },
+      {
+        "min_strength": 0.0000016373056994818652,
+        "answerable_kept": 3,
+        "answerable_total": 6,
+        "unanswerable_abstained": 6,
+        "unanswerable_total": 6
+      },
+      {
+        "min_strength": 0.0000019961472735548736,
+        "answerable_kept": 2,
+        "answerable_total": 6,
+        "unanswerable_abstained": 6,
+        "unanswerable_total": 6
+      },
+      {
+        "min_strength": 0.000003618172471874986,
+        "answerable_kept": 1,
+        "answerable_total": 6,
+        "unanswerable_abstained": 6,
+        "unanswerable_total": 6
+      }
+    ]
+  },
+  "suggested_abstain_min_score": 0.000001622025198320112
+}

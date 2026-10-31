@@ -52,3 +52,13 @@ Checklist from `memory.md` section 16, and how much the probe script covers:
 
 ## Notes for the team
 - Keep this checklist ticked as you go so everyone can see when Phase 0 is done.
+
+## 2026-10-31: Verify feature and companions (built on the mock, not run against real Prune)
+Built from the "Verify" build prompt, additive to the existing engine. All new work is in new files except small hooks listed under "Touched files". No Phase 0 call was made (no key in this session), so receipt format details remain **unverified**; see `docs/receipts.md`.
+- **Point 1, verify savings:** three labelled cost numbers on every answer; `verify` returns a reason; tamper check (`receipt_override_raw`) that never saves; `bench/verify.py`; export meta line.
+- **Point 2, cost per good answer:** `GET /api/usage` adds `cpga`, `success_rate`, `gate`, `attempts_by_answer`; the usage screen shows them next to the checker's error rate (or "not measured yet").
+- **Point 3, no-AI check:** `src/gate.ts`, 46 labelled examples in `bench/gate_eval`, optional abstaining. Measured on the set: see `reports/gate_eval.json`.
+- **Point 4, pause and billing uncertain:** already built; acceptance tests added (`tests/a-budget.test.ts`).
+- **Point 5, protected numbers:** `src/protected.ts` and `tests/a-protected.test.ts`. Not wired into `context.ts` yet.
+- **Touched files outside my paths (additive, default-off):** `app.ts` (route blocks moved to `src/routes/`), `orchestrator.ts` (gate, baseline, abstain hooks), `context.ts` (bm25 scores), `env.ts`, `package.json`, `tests/helpers.ts` (loads every migration), `tests/api.test.ts` and `tests/bench.test.ts` (one assertion each, for the new export meta line), `athena.md` and `COMPONENTS.md` (endpoint rows), `web/` (new components; `Drawer`, `ChatPanel`, `UsagePanel`, `types`, `api` hooked in).
+- **Contract change (for Harshdeep and Keha):** E27 now starts with a `{"type":"meta",...}` line. E23, E24, E26 gained fields; nothing was removed or renamed.
