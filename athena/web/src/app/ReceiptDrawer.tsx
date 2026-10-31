@@ -1,11 +1,12 @@
-// The receipt tab: the three cost numbers, the verification result, and a tamper demo that edits a copy of the
-// receipt and checks it. The edited copy is only ever verified; the server never saves it.
+// The receipt tab: the three cost numbers, the verification result, how the cost was calculated (recomputed by the
+// server on every Verify), and a tamper demo that edits a copy of the receipt and checks it. The edited copy is only
+// ever verified; the server never saves it.
 import { useEffect, useState } from 'react';
 import { LABELS, BASELINE_TOOLTIP } from '../components/AnswerCostBar';
 import { VerifyBadge } from '../components/VerifyBadge';
 import { ApiError, api } from '../lib/api';
 import { usd } from '../lib/format';
-import type { ReceiptViewFull, VerifyResult } from '../lib/types';
+import type { CostCheck, ReceiptViewFull, VerifyResult } from '../lib/types';
 
 /** Flip one digit of the signed cost, the way a person trying to fake a cheaper bill would. */
 export function flipOneDigit(raw: string): string {
@@ -29,12 +30,14 @@ export function ReceiptDrawer({ callId, onError }: { callId: string; onError: (e
   const [tamper, setTamper] = useState(false);
   const [draft, setDraft] = useState('');
   const [tamperResult, setTamperResult] = useState<VerifyResult | null>(null);
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
 
   useEffect(() => {
     let live = true;
     setR(null);
     setTamper(false);
     setTamperResult(null);
+    setCheckedAt(null);
     api.receipt(callId).then((x) => live && setR(x)).catch(onError);
     return () => { live = false; };
   }, [callId, onError]);
@@ -47,8 +50,10 @@ export function ReceiptDrawer({ callId, onError }: { callId: string; onError: (e
   async function verify() {
     setBusy(true);
     try {
-      await api.verify(callId);
-      setR(await api.receipt(callId));
+      const res = await api.verify(callId);
+      const fresh = await api.receipt(callId);
+      setR(res.cost_check ? { ...fresh, cost_check: res.cost_check } : fresh);
+      setCheckedAt(new Date());
     } catch (e) { onError(e); } finally { setBusy(false); }
   }
   async function copy() {
@@ -88,8 +93,9 @@ export function ReceiptDrawer({ callId, onError }: { callId: string; onError: (e
           </div>
         </details>
       )}
+      {r.cost_check && <CostCheckCard cc={r.cost_check} checkedAt={checkedAt} />}
       <div className="row">
-        <button className="btn btn--ghost btn--sm" onClick={verify} disabled={busy || !raw}>{busy ? 'Checking…' : 'Verify again'}</button>
+        <button className="btn btn--ghost btn--sm" onClick={verify} disabled={busy}>{busy ? 'Checking…' : raw ? 'Verify again' : 'Verify cost'}</button>
         <button className="btn btn--ghost btn--sm" onClick={copy} disabled={!raw}>{copied ? 'Copied' : 'Copy raw receipt'}</button>
         <button className="btn btn--ghost btn--sm" onClick={() => { setTamper((t) => !t); setDraft(flipOneDigit(raw)); setTamperResult(null); }} disabled={!raw}>{tamper ? 'Hide tamper demo' : 'Try tampering'}</button>
       </div>
@@ -110,5 +116,31 @@ export function ReceiptDrawer({ callId, onError }: { callId: string; onError: (e
         To check offline, export the receipts on the usage screen, then run <code>python bench/verify.py athena-receipts.jsonl</code> or <code>node scripts/verify-receipts.mjs athena-receipts.jsonl</code>.
       </p>
     </>
+  );
+}
+
+/** The cost, step by step: tokens × price for each side, the total, what was charged, and whether they match. */
+function CostCheckCard({ cc, checkedAt }: { cc: CostCheck; checkedAt: Date | null }) {
+  const verdict =
+    cc.basis === 'receipt' ? <span className="badge badge--sim">Reference only: the signed receipt sets the cost</span>
+    : cc.matches === true ? <span className="badge badge--ok">Calculation matches the cost charged</span>
+    : cc.matches === false ? <span className="badge badge--bad">Does not match the cost charged</span>
+    : <span className="badge badge--sim">Cannot recompute: token counts missing</span>;
+  return (
+    <section className="card" style={{ display: 'grid', gap: 8 }} aria-label="How this cost was calculated">
+      <h4 style={{ margin: 0 }}>How this cost was calculated</h4>
+      <dl className="kv">
+        <dt>Tokens in</dt><dd>{cc.prompt_tokens?.toLocaleString('en-US') ?? '?'} × ${cc.in_per_m_usd} / 1M</dd>
+        <dt>Input cost</dt><dd>{cc.input_cost_usd == null ? '?' : usd(cc.input_cost_usd)}</dd>
+        <dt>Tokens out</dt><dd>{cc.completion_tokens?.toLocaleString('en-US') ?? '?'} × ${cc.out_per_m_usd} / 1M</dd>
+        <dt>Output cost</dt><dd>{cc.output_cost_usd == null ? '?' : usd(cc.output_cost_usd)}</dd>
+        <dt>Calculated total</dt><dd><b>{cc.computed_usd == null ? '?' : usd(cc.computed_usd)}</b></dd>
+        <dt>Cost charged</dt><dd><b>{cc.recorded_usd == null ? '?' : usd(cc.recorded_usd)}</b></dd>
+        <dt>Price table</dt><dd>{cc.price_model}</dd>
+      </dl>
+      <div style={{ justifySelf: 'start' }}>{verdict}</div>
+      {checkedAt && <p className="muted" style={{ fontSize: 12, margin: 0 }} role="status">Rechecked on the server at {checkedAt.toLocaleTimeString()}.</p>}
+      <p className="muted" style={{ fontSize: 12, margin: 0 }}>{cc.note} Totals are rounded up to the next $0.000001.</p>
+    </section>
   );
 }

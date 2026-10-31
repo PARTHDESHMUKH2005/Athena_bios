@@ -1,6 +1,7 @@
 // E23 (read a receipt) and E24 (verify it). Prune-format details stay in receipts.ts; this file only shapes the API.
 import { z } from 'zod';
 import { BASELINE_TOOLTIP, NAIVE_FORMULA_TEXT, SAVINGS_NOTE, baselineInputsSigned, readInputs } from '../baseline.ts';
+import { costCheck } from '../costcheck.ts';
 import { AppError } from '../errors.ts';
 import type { LlmDeps } from '../llm.ts';
 import { VERIFY_REASON_TEXT, verifyReceiptDetailed } from '../receipts.ts';
@@ -96,6 +97,8 @@ export function registerReceiptRoutes(app: AppT, deps: { llm?: LlmDeps }): void 
         without_prune_usd: usd(row.cost_without_prune_micro),
         naive_baseline_usd: usd(row.naive_cost_micro),
       },
+      // How the cost was calculated, recomputed now from the stored token counts and the price table.
+      cost_check: costCheck(c.env, row),
       baseline: inputs
         ? {
             formula_version: row.naive_formula_version,
@@ -126,9 +129,12 @@ export function registerReceiptRoutes(app: AppT, deps: { llm?: LlmDeps }): void 
     const { receipt_override, receipt_override_raw } = parsed.data;
     const override = receipt_override_raw ?? (receipt_override ? JSON.stringify(receipt_override) : null);
 
-    const row = await c.env.DB.prepare('SELECT id, receipt_json, cost_micro FROM llm_calls WHERE id = ? AND workspace_id = ?')
+    const row = await c.env.DB.prepare(
+      `SELECT id, receipt_json, cost_micro, tier, model_used, prompt_tokens, completion_tokens, cache_hit, verify_reason
+       FROM llm_calls WHERE id = ? AND workspace_id = ?`,
+    )
       .bind(c.req.param('call_id'), c.get('ws'))
-      .first<{ id: string; receipt_json: string | null; cost_micro: number | null }>();
+      .first<{ id: string; receipt_json: string | null; cost_micro: number | null; tier: string; model_used: string | null; prompt_tokens: number | null; completion_tokens: number | null; cache_hit: number | null; verify_reason: string | null }>();
     if (!row) throw new AppError('not_found');
     const fetchFn = deps.llm?.fetch ?? fetch;
 
@@ -138,11 +144,24 @@ export function registerReceiptRoutes(app: AppT, deps: { llm?: LlmDeps }): void 
       return c.json({ verify_status: v.status, reason: v.reason, reason_text: reasonText(v.reason), verified_at: null, override: true, saved: false });
     }
 
-    if (!row.receipt_json) throw new AppError('receipt_missing');
+    if (!row.receipt_json) {
+      // Nothing is signed (the Groq path). Verify what can be verified: redo the cost arithmetic and compare.
+      const check = costCheck(c.env, row);
+      await logEvent(c.env, c.get('ws'), 'cost_rechecked', row.id, { matches: check.matches });
+      return c.json({
+        verify_status: 'missing',
+        reason: 'no_receipt',
+        reason_text: reasonText('no_receipt'),
+        verified_at: nowSec(),
+        override: false,
+        saved: false,
+        cost_check: check,
+      });
+    }
     const v = await verifyReceiptDetailed(c.env, row.receipt_json, fetchFn, { expectedCostMicro: row.cost_micro });
     const at = nowSec();
     await c.env.DB.prepare('UPDATE llm_calls SET verify_status = ?, verify_reason = ?, verified_at = ? WHERE id = ?').bind(v.status, v.reason, at, row.id).run();
     await logEvent(c.env, c.get('ws'), 'receipt_verified', row.id, { status: v.status, reason: v.reason });
-    return c.json({ verify_status: v.status, reason: v.reason, reason_text: reasonText(v.reason), verified_at: at, override: false, saved: true });
+    return c.json({ verify_status: v.status, reason: v.reason, reason_text: reasonText(v.reason), verified_at: at, override: false, saved: true, cost_check: costCheck(c.env, { ...row, verify_reason: v.reason }) });
   });
 }
