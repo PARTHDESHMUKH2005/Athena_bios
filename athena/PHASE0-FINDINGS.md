@@ -1,4 +1,4 @@
-# Phase 0 findings, part 1 (2026-10-31)
+# Phase 0 findings (2026-10-31)
 
 Run by Harshdeep with two Prune keys against `https://api.withprune.com/v1`, using `npm run phase0` and small follow-up calls. Keys are not recorded here. Stream A (Parth) continues this file or folds it into `prune.md`. Everything below was observed, not read from docs.
 
@@ -31,10 +31,33 @@ Run by Harshdeep with two Prune keys against `https://api.withprune.com/v1`, usi
 4. **Injection tests.** Shield blocks text containing common injection phrases before any model sees it. With the real service, the injection suite will show many payloads as `shield_blocked` (protected, but not a measure of the model resisting), and a legitimate document that quotes such a phrase makes the question fail. The user-facing message and the benchmark need to account for this.
 5. **Identical retries.** Prune documents an `agent_loop` stop for the same step repeated three times in a run. Our retries send identical requests; whether the third attempt trips it is **unverified**.
 
+## Part 2: a real signed receipt (key 2, `gemini/gemini-3.5-flash`, one call)
+
+**Phase 0 exit criterion met at the Prune level: a real call worked and its receipt verified.**
+
+| Check | Result |
+|---|---|
+| Our local Ed25519 verification (raw bytes, sorted keys, compact, ASCII escapes) | **valid**: the canonical form in `src/receipts.ts` matches what Prune signs |
+| Prune hosted verify | `POST /v1/receipts/verify` with body `{"receipt": <the receipt object>}` returns 200 `{"valid":true,"reason":"valid","key_id":"d4c5e8e9","signed_at":...}`. A bare receipt body returns 422 (`receipt` field required) |
+| Field names | `cost_with_prune_usd`, `cost_without_prune_usd`, `cache_hit`, `cache_type`, `receipt_signature` (88 chars), `receipt_signed_at`, `receipt_signing_key_id` exist exactly as assumed. The receipt has about 150 fields in all (savings breakdown, Shield events, latency, routing, cache scope) |
+| Cost | `cost_with_prune_usd` 0.000002 for a one-word answer |
+| Response headers | `x-prune-cache-hit`, `x-prune-cache-type`, `x-prune-cost-saved`, `x-prune-provider`, `x-prune-pipeline-mode`, `x-prune-output-cap-applied`, `x-prune-total-ms`, `x-prune-upstream-ms`, `x-prune-why-no-savings` |
+| Cache scope | `cache_scope: "customer": the cache is per `X-Prune-Customer-Id` (our workspace id), so workspaces do not share cached answers |
+
+### Surprises that need decisions
+
+1. **Prune rewrote our request.** The default pipeline mode is `auto` ("Recommended"). It applied an **output cap**: we sent `max_tokens: 200` and the receipt shows `max_tokens_after: 64`, `workload_kind: simple_task`. Our answers ask for up to 600 tokens, so real answers could be truncated. Decide the pipeline mode via `X-Prune-Pipeline-Mode` (accepted values still to confirm) before any quality measurement.
+2. **Free-trial clock.** Docs say the free tier ends 14 days after the first Optimize receipt. This receipt shows `optimization_mode: auto` with a mechanism applied, so the clock may have started for key 2 on 2026-10-31 (14:47 UTC). Check the dashboard.
+3. **Model name.** The receipt has `original_model` (`gemini-3.5-flash`) and `routed_model` (null when not routed), not `model`. Our code reads `model`/`model_used`/`routed_model`, so for Gemini the stored served model would be empty. Read `routed_model ?? original_model`.
+4. **Gemini response shape** (see part 1, item 2): the answer is in `candidates[0].content.parts[0].text` and usage in `usageMetadata`. Gemini 3.x also spent 57 thinking tokens on a one-word answer.
+5. **Canary on by default.** `shield_canary_injected: true` although we sent no canary header. Find out what it adds to the prompt.
+6. **Latency.** 10.8 s total for a trivial call: 5.8 s upstream, 1.3 s Shield preflight, the rest unexplained. This affects the demo and any spinner-free UX.
+7. **Gemini capacity.** A later full probe on `gemini/gemini-3.1-flash-lite` returned 503 "This model is currently experiencing high demand" (Prune code `provider_upstream_5xx`, hint "Retry shortly or switch models"). Our classifier already treats 503 as retryable. The error body for an unknown provider lists the vault providers ("Vault providers on this account: gemini").
+
 ## Not yet verified (needs a full run with a working model)
 
-Receipt field names and the cost field, whether the signature verifies with our canonical form, the hosted verify endpoint, cache hit fields, whether `Idempotency-Key` is honoured, routing headers, canary fields, and per-model prices.
+Whether `Idempotency-Key` is honoured, a cache **hit** (second identical call), the accepted pipeline modes, whether the third identical retry trips `agent_loop`, concurrent-call spend behaviour, the OpenAI and Anthropic response shapes, and per-model prices.
 
 ## Next
 
-Run the full probe on a working model: `PHASE0_MODEL=gemini/gemini-3.1-flash-lite npm run phase0` with key 2 in `athena/.env`. Do not commit keys. Rotate any key that was pasted into chat.
+Pick a model with capacity (`gemini/gemini-3.5-flash` worked) and rerun: `PHASE0_MODEL=gemini/gemini-3.5-flash npm run phase0` with the key in `athena/.env`. Do not commit keys. Rotate any key that was pasted into chat.
