@@ -12,6 +12,7 @@ Last updated: 2026-10-31. *First draft written from the repo history and the pla
 - **Key 1:** the OpenAI key in its vault is rejected by OpenAI ("Incorrect API key provided") and the Anthropic account has no credits. No model call succeeds yet.
 - **Key 2:** the vault has a working **Gemini** key. `gemini/gemini-3.5-flash`, `gemini/gemini-3.1-flash-lite`, `gemini/gemini-2.5-pro` and `gemini/gemini-3.1-pro-preview` answered; `gemini/gemini-2.5-flash` and `gemini/gemini-2.0-flash` returned 404. Its OpenAI and Anthropic keys are missing.
 - Gemini answers came back in Gemini's own JSON shape (`candidates`), **not** the OpenAI `choices` shape our model caller reads. This needs a decision (see PHASE0-FINDINGS.md).
+- **A real signed receipt verified with our code** (local Ed25519 and Prune's hosted check). Cost fields are named as assumed. Surprises to decide: Prune's default pipeline cut our `max_tokens` from 200 to 64, the free-trial clock may have started, and the receipt names the model `original_model`/`routed_model`.
 - Real Shield codes and bodies confirmed for `run_budget`, `run_budget_missing_run_id`, `agent_step_budget`, `prompt_injection` and `prompt_injection_signal`.
 
 ## Doing now: Phase 0 (this blocks the whole team)
