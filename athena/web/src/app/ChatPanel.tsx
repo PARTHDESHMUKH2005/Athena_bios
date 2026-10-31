@@ -1,6 +1,9 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Chev } from '../components/bits';
+import { AnswerCostBar } from '../components/AnswerCostBar';
+import { VerifyBadge } from '../components/VerifyBadge';
+import { api } from '../lib/api';
 import { RETRYABLE_AFTER_FAIL, errorCopy, usd } from '../lib/format';
 import type { Budget, ChatDetail, Message, Mode } from '../lib/types';
 
@@ -43,13 +46,6 @@ function withCites(msg: Message, detail: ChatDetail, onCite: ChatPanelProps['onC
   }
   if (last < text.length) out.push(text.slice(last));
   return out;
-}
-
-function Badge({ status }: { status: string }) {
-  if (status === 'verified') return <span className="badge badge--ok">Receipt verified</span>;
-  if (status === 'failed') return <span className="badge badge--bad" title="The signature did not match. Treat this cost as unconfirmed.">Verification failed</span>;
-  if (status === 'unverified') return <span className="badge badge--sim" title="We could not check this here. Export the receipts and verify offline.">Verify offline</span>;
-  return <span className="badge badge--sim">No receipt</span>;
 }
 
 function PauseCard({ m, budget, onResume, onRaise }: { m: Message; budget: Budget | null; onResume: ChatPanelProps['onResume']; onRaise: ChatPanelProps['onRaise'] }) {
@@ -95,6 +91,29 @@ function PauseCard({ m, budget, onResume, onRaise }: { m: Message; budget: Budge
   );
 }
 
+/** The named "Billing uncertain" state: the request was sent but no receipt came back. Retrying is the user's click. */
+function BillingUncertain({ m, onRetry, onOpen }: { m: Message; onRetry: ChatPanelProps['onRetry']; onOpen: ChatPanelProps['onOpen'] }) {
+  const [est, setEst] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (m.call_id) api.receipt(m.call_id).then((r) => live && setEst(r.call.est_usd ?? null)).catch(() => undefined);
+    return () => { live = false; };
+  }, [m.call_id]);
+  return (
+    <div className="a">
+      <div className="card card--warn" role="alert">
+        <h4><span className="badge badge--sim">Billing uncertain</span></h4>
+        <p>We sent this request but did not get a receipt. We can&rsquo;t tell whether you were charged. Retry costs up to <b>{est == null ? 'the estimate' : usd(est)}</b>.</p>
+        <div className="row">
+          {m.call_id && <button className="btn btn--sm" onClick={() => onRetry(m.call_id!)}>Retry once</button>}
+          <button className="linkbtn" onClick={() => onOpen(m.id, 'act')}>Show activity</button>
+        </div>
+        <p className="muted" style={{ fontSize: 12 }}>The estimate was counted against your allowance as a precaution. Nothing is retried automatically.</p>
+      </div>
+    </div>
+  );
+}
+
 function Answer({ m, p }: { m: Message; p: ChatPanelProps }) {
   if (m.status === 'pending') {
     return (
@@ -109,6 +128,7 @@ function Answer({ m, p }: { m: Message; p: ChatPanelProps }) {
     const c = errorCopy(code);
     const cancelled = m.content === 'Cancelled.';
     if (cancelled) return <div className="a"><div className="foot">Cancelled. Nothing was charged.</div></div>;
+    if (code === 'billing_uncertain') return <BillingUncertain m={m} onRetry={p.onRetry} onOpen={p.onOpen} />;
     return (
       <div className="a">
         <div className="card card--warn" role="alert">
@@ -132,10 +152,12 @@ function Answer({ m, p }: { m: Message; p: ChatPanelProps }) {
         {u?.model_used && <span>{u.model_used}</span>}
         {u && <span>{usd(u.cost_usd)}</span>}
         {u && <span>{u.cache_hit ? 'Cache hit (free)' : 'Cache miss'}</span>}
-        {u && <Badge status={u.verify_status} />}
+        {u && <VerifyBadge status={u.verify_status} compact />}
         {u && <button className="linkbtn" onClick={() => p.onOpen(m.id, 'rec')}>Receipt</button>}
         <button className="linkbtn" onClick={() => p.onOpen(m.id, 'act')}>Activity</button>
       </div>
+      {u && <AnswerCostBar usage={u} gate={m.gate} onReceipt={() => p.onOpen(m.id, 'rec')} />}
+      {!u && m.gate?.abstained && <div className="foot"><span className="badge badge--sim">Nothing to check</span> Answered without calling a model. Cost: $0.</div>}
     </div>
   );
 }

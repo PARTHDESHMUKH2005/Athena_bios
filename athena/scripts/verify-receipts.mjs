@@ -12,7 +12,8 @@ import { extractReceipt, verifyLocal } from '../src/receipts.ts';
 
 /** @returns {Promise<{ total: number, verified: number, failed: string[], costMismatch: string[], receiptCostUsd: number, recordedCostUsd: number, cacheHits: number, withoutPruneUsd: number }>} */
 export async function verifyExport(jsonl, keyText) {
-  const lines = jsonl.split('\n').map((l) => l.trim()).filter(Boolean);
+  // The first line of an export is a meta line (public key, key id, canonicalization). It is not a receipt.
+  const lines = jsonl.split('\n').map((l) => l.trim()).filter(Boolean).filter((l) => !/^\{\s*"type"\s*:\s*"meta"/.test(l));
   const out = { total: lines.length, verified: 0, failed: [], costMismatch: [], receiptCostUsd: 0, recordedCostUsd: 0, cacheHits: 0, withoutPruneUsd: 0 };
   for (const line of lines) {
     let row;
@@ -60,7 +61,14 @@ async function main() {
     process.exit(2);
   }
   let keyText;
+  const text = readFileSync(file, 'utf8');
+  let metaKey = null;
+  try {
+    const first = JSON.parse(text.split('\n')[0] ?? '');
+    if (first?.type === 'meta' && typeof first.public_key_pem === 'string') metaKey = first.public_key_pem;
+  } catch { /* no meta line */ }
   if (keyIdx >= 0 && args[keyIdx + 1]) keyText = readFileSync(args[keyIdx + 1], 'utf8');
+  else if (metaKey) keyText = metaKey;
   else {
     const base = (process.env.PRUNE_BASE_URL ?? 'https://api.withprune.com/v1').replace(/\/$/, '');
     const r = await fetch(`${base}/public-key`);
@@ -70,7 +78,7 @@ async function main() {
     }
     keyText = await r.text();
   }
-  const r = await verifyExport(readFileSync(file, 'utf8'), keyText);
+  const r = await verifyExport(text, keyText);
   console.log(`receipts checked : ${r.total}`);
   console.log(`signature valid  : ${r.verified}`);
   console.log(`total from receipts: $${r.receiptCostUsd.toFixed(6)}   recorded by Athena: $${r.recordedCostUsd.toFixed(6)}`);

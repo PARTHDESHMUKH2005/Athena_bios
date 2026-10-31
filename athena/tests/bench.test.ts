@@ -92,7 +92,7 @@ describe('benchmark run (against the mock: structure and prompt sizes only)', ()
       const v = await verifyExport(r.receipts[file], key);
       assert.ok(v.total > 0 && v.verified === v.total && v.failed.length === 0, file);
     }
-    assert.equal((r.receipts.athena.trim().split('\n').length), 12, 'B and C: six answers each');
+    assert.equal((r.receipts.athena.trim().split('\n').filter((l: string) => !l.startsWith('{"type":"meta"')).length), 12, 'B and C: six answers each (the first export line is a meta line)');
     assert.ok(r.summary.comparisons.B_vs_T && r.summary.comparisons.B_vs_A);
   });
 

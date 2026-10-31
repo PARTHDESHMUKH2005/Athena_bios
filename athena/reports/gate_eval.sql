@@ -1,0 +1,1 @@
+INSERT INTO gate_eval (n, false_pass, false_fail, precision, recall, thresholds_json, created_at) VALUES (46, 7, 1, 0.7741935483870968, 0.96, '{"abstain_min_score":0.000001622025198320112,"labelled_set":"bench/gate_eval/labelled.jsonl"}', 1793460313);

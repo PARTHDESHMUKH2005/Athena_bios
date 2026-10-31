@@ -1,4 +1,4 @@
-import type { AppConfig, AskResult, Budget, ChatDetail, ChatSummary, DocOut, Mode, ReceiptView, UsageReport } from './types';
+import type { AppConfig, AskResult, Budget, ChatDetail, ChatSummary, DocOut, Mode, ReceiptViewFull, UsageReport, VerifyResult } from './types';
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
 const TOKEN_KEY = 'athena.token';
@@ -119,8 +119,11 @@ export const api = {
     request<AskResult>('POST', `/api/chats/${chatId}/messages/${messageId}/resume`, { body: { action } }),
   summary: (chatId: string) => request<Blob>('GET', `/api/chats/${chatId}/summary`, { blob: true }),
 
-  receipt: (callId: string) => request<ReceiptView>('GET', `/api/receipts/${callId}`),
-  verify: (callId: string) => request<{ verify_status: string }>('POST', `/api/receipts/${callId}/verify`, { body: {} }),
+  receipt: (callId: string) => request<ReceiptViewFull>('GET', `/api/receipts/${callId}`),
+  verify: (callId: string) => request<VerifyResult>('POST', `/api/receipts/${callId}/verify`, { body: {} }),
+  /** Check an edited copy of a receipt (the tamper demo). The server never saves it. */
+  verifyOverride: (callId: string, receiptText: string) =>
+    request<VerifyResult>('POST', `/api/receipts/${callId}/verify`, { body: { receipt_override_raw: receiptText } }),
   retry: (callId: string) => request<AskResult>('POST', `/api/calls/${callId}/retry`, { body: {} }),
   usage: () => request<UsageReport>('GET', '/api/usage'),
   exportReceipts: () => request<Blob>('GET', '/api/export/receipts.jsonl', { blob: true }),

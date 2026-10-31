@@ -6,7 +6,7 @@ import { AppError, classifyHttp, classifyNetworkError } from './errors.ts';
 import type { ErrorCode } from './errors.ts';
 import { assertNotKilled } from './killswitch.ts';
 import { getBudget, releaseStatement, remainingMicro, reserve, settleStatement } from './budget.ts';
-import { extractReceipt, verifyReceipt } from './receipts.ts';
+import { extractReceipt, verifyReceiptDetailed } from './receipts.ts';
 import type { VerifyStatus } from './receipts.ts';
 import { estimateMicro, loadTiers } from './tiers.ts';
 import type { Purpose, Tier } from './tiers.ts';
@@ -214,8 +214,11 @@ export async function callModel(env: Env, req: CallRequest, deps: LlmDeps = {}):
       costMicro = cacheHit ? 0 : Math.ceil(promptTokens * cfg.inPerM + completionTokens * cfg.outPerM);
     }
     let verifyStatus: VerifyStatus = 'unverified';
+    let verifyReason: string | null = null;
     try {
-      verifyStatus = await verifyReceipt(env, receipt.raw, doFetch);
+      const v = await verifyReceiptDetailed(env, receipt.raw, doFetch, { expectedCostMicro: costMicro });
+      verifyStatus = v.status;
+      verifyReason = v.reason;
     } catch {
       verifyStatus = 'unverified';
     }
@@ -227,10 +230,11 @@ export async function callModel(env: Env, req: CallRequest, deps: LlmDeps = {}):
       db
         .prepare(
           `UPDATE llm_calls SET status = 'ok', model_used = ?, attempt = ?, cost_micro = ?, cost_without_prune_micro = ?,
-             cache_hit = ?, prompt_tokens = ?, completion_tokens = ?, receipt_json = ?, verify_status = ?, finished_at = ?
+             cache_hit = ?, prompt_tokens = ?, completion_tokens = ?, receipt_json = ?, verify_status = ?, finished_at = ?,
+             verify_reason = ?, verified_at = ?
            WHERE id = ?`,
         )
-        .bind(modelUsed, attempt, costMicro, receipt.costWithoutMicro, cacheHit ? 1 : 0, promptTokens, completionTokens, receipt.raw, verifyStatus, nowSec(), callId),
+        .bind(modelUsed, attempt, costMicro, receipt.costWithoutMicro, cacheHit ? 1 : 0, promptTokens, completionTokens, receipt.raw, verifyStatus, nowSec(), verifyReason, nowSec(), callId),
       settleStatement(db, req.workspaceId, est, costMicro),
     ]);
 
