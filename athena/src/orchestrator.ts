@@ -21,7 +21,7 @@ import { ABSTAIN_ANSWER, gateSummary, shouldAbstain } from './gate.ts';
 import type { GateResult } from './gate.ts';
 import { scanOutput } from './outputscan.ts';
 import { hit } from './ratelimit.ts';
-import { estimateMicro, loadTiers, lowerTier, nextTier, pickTier } from './tiers.ts';
+import { estimateMicro, explainEscalation, explainRouting, loadTiers, lowerTier, nextTier, pickTier } from './tiers.ts';
 import type { Purpose, Tier } from './tiers.ts';
 import { Trace } from './trace.ts';
 import type { TraceStep } from './trace.ts';
@@ -266,7 +266,7 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
     }
     const picked = pickTier({ purpose, question: p.question, contextTokens: built.promptTokens, documentCount: built.documentCount });
     const tier = lowerTier(picked.tier, a.down);
-    await trace.add('tier', `${tier}: ${picked.reason}`);
+    await trace.add('tier', explainRouting(tier, picked.reason, { lowered: tier !== picked.tier }));
     // Models that spend output tokens on hidden thinking (Gemini 3.x) can need a floor, set per tier in MODEL_TIERS.
     const maxOut = Math.max(short ? SHORT_OUT : MAX_OUT[p.mode], tiers[tier].minOutputTokens ?? 0);
     const est = estimateMicro(tiers[tier], built.promptTokens, maxOut);
@@ -338,7 +338,7 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
   let verdict = await gated(call.text, check(call.text));
   if (!verdict.ok && tier !== 'strong') {
     const target = nextTier(tier);
-    await trace.add('escalate', `${tier} to ${target}: ${verdict.reason}`);
+    await trace.add('escalate', explainEscalation(tier, target, verdict.reason));
     try {
       const retry = await callModel(
         env,

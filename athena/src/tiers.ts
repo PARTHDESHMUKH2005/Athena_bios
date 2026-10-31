@@ -47,6 +47,23 @@ export type Purpose = 'answer' | 'summarize' | 'extract' | 'ocr' | 'memory_summa
 
 const STRONG_WORDS = /\b(compare|comparison|versus|vs\.?|calculate|compute|reconcile|discrepanc\w*)\b/i;
 
+const TIER_NAME: Record<Tier, string> = { economy: 'the economical model', standard: 'the standard model', strong: 'the stronger model' };
+
+/**
+ * One plain sentence for the user: which tier handled the question and why. Built from the rule that fired
+ * (never from a model), so it can be shown on every answer for free. Pass `lowered` when budget pressure
+ * moved the question down from the tier the rules wanted.
+ */
+export function explainRouting(tier: Tier, reason: string, opts: { lowered?: boolean } = {}): string {
+  const base = `Used ${TIER_NAME[tier]}: ${reason}.`;
+  return opts.lowered ? `${base} Chosen one step cheaper to stay within your allowance.` : base;
+}
+
+/** Same, for the single allowed step up after a failed citation or number check. */
+export function explainEscalation(from: Tier, to: Tier, why: string): string {
+  return `Re-asked with ${TIER_NAME[to]} instead of ${TIER_NAME[from]}: ${why}. This is the only retry on a stronger model.`;
+}
+
 /** Rules only, no model call. */
 export function pickTier(input: {
   purpose: Purpose;
