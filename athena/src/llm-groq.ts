@@ -21,13 +21,17 @@ import { newId, nowSec } from './util.ts';
 
 export const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 const MAX_RETRIES = 2;
-const DEADLINE_MS = 45_000;
+// Longer than Prune's 45 s: a per-minute token limit can legitimately ask us to wait 10 to 20 seconds, twice.
+const DEADLINE_MS = 60_000;
+// Never wait longer than this for one retry; past it we stop and tell the user how long Groq asked for.
+const MAX_WAIT_MS = 25_000;
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-function backoff(attempt: number, retryAfter: string | null): number {
+/** Groq's per-minute token limit is a sliding window: retrying before the advised wait ends fails again, so honour it in full. */
+function backoff(attempt: number, retryAfter: string | null): { ms: number; advised: boolean } {
   const ra = retryAfter ? Number(retryAfter) : NaN;
-  if (Number.isFinite(ra) && ra >= 0) return Math.min(ra * 1000, 8000);
-  return Math.min(4000, 400 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
+  if (Number.isFinite(ra) && ra >= 0) return { ms: Math.ceil(ra * 1000) + 250, advised: true };
+  return { ms: Math.min(4000, 400 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 200), advised: false };
 }
 
 export async function callGroq(env: Env, req: CallRequest, deps: LlmDeps = {}): Promise<CallResult> {
@@ -92,6 +96,7 @@ export async function callGroq(env: Env, req: CallRequest, deps: LlmDeps = {}): 
 
   const started = now();
   let lastVerdict: { code: ErrorCode; detail: string } = { code: 'provider_unavailable', detail: 'no attempt completed' };
+  let waitSec: number | null = null; // how long Groq asked us to wait on the last rate limit
   let attempt = 0;
 
   for (attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
@@ -108,7 +113,7 @@ export async function callGroq(env: Env, req: CallRequest, deps: LlmDeps = {}): 
       if (classifyNetworkError(e) === 'not_sent') {
         lastVerdict = { code: 'provider_unavailable', detail: 'connection failed before sending' };
         if (attempt <= MAX_RETRIES) {
-          await sleep(backoff(attempt, null));
+          await sleep(backoff(attempt, null).ms);
           continue;
         }
         break;
@@ -123,8 +128,13 @@ export async function callGroq(env: Env, req: CallRequest, deps: LlmDeps = {}): 
       // 413 is Groq's "request too large for the tokens-per-minute limit": waiting helps, a bigger retry does not.
       const code: ErrorCode = res.status === 413 ? 'rate_limited' : verdict.code;
       lastVerdict = { code, detail: `HTTP ${res.status}` };
+      const ra = res.headers.get('retry-after');
+      waitSec = code === 'rate_limited' && ra && Number.isFinite(Number(ra)) ? Number(ra) : null;
       if (verdict.retry && res.status !== 413 && attempt <= MAX_RETRIES) {
-        await sleep(backoff(attempt, res.headers.get('retry-after')));
+        const wait = backoff(attempt, ra);
+        // Waiting would run past the deadline or the per-retry cap: stop now and report the advised wait instead.
+        if (wait.ms > MAX_WAIT_MS || wait.ms >= DEADLINE_MS - (now() - started)) break;
+        await sleep(wait.ms);
         continue;
       }
       break;
@@ -180,6 +190,6 @@ export async function callGroq(env: Env, req: CallRequest, deps: LlmDeps = {}): 
   await finish(status, 0, lastVerdict.code, Math.min(attempt, MAX_RETRIES + 1), lastVerdict.detail);
   throw new AppError(lastVerdict.code, undefined, {
     retryable: lastVerdict.code === 'provider_unavailable' || lastVerdict.code === 'rate_limited',
-    detail: { callId, attempts: Math.min(attempt, MAX_RETRIES + 1) },
+    detail: { callId, attempts: Math.min(attempt, MAX_RETRIES + 1), ...(waitSec !== null ? { retryAfterSec: waitSec } : {}) },
   });
 }

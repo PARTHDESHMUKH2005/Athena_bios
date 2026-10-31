@@ -113,8 +113,32 @@ describe('parallel Groq model path', () => {
     const r = await callModel(env, req(ws.id, 'k1'), { fetch: f, sleep: async (ms) => void waits.push(ms) });
     assert.equal(r.attempts, 2);
     assert.equal(seen.length, 2);
-    assert.deepEqual(waits, [2000]);
+    assert.deepEqual(waits, [2250]);
     assert.equal((await budgetOf(env, ws.id))!.spent_micro, 120);
+  });
+
+  test('Groq\'s advised wait is honoured in full, not cut short, so the retry lands after the window', async () => {
+    const env = await makeEnv(unusedPrune, base);
+    const ws = await makeWorkspace(env);
+    const { f } = scripted(new Response('{"error":{"message":"ITPM limit"}}', { status: 429, headers: { 'retry-after': '9' } }), ok());
+    const waits: number[] = [];
+    const r = await callModel(env, req(ws.id, 'k1'), { fetch: f, sleep: async (ms) => void waits.push(ms) });
+    assert.equal(r.attempts, 2);
+    assert.deepEqual(waits, [9250]);
+  });
+
+  test('a wait too long to sit through is not slept: it stops and reports how long Groq asked for', async () => {
+    const env = await makeEnv(unusedPrune, base);
+    const ws = await makeWorkspace(env);
+    const { f, seen } = scripted(new Response('{"error":{"message":"daily limit"}}', { status: 429, headers: { 'retry-after': '120' } }));
+    const waits: number[] = [];
+    await assert.rejects(
+      callModel(env, req(ws.id, 'k1'), { fetch: f, sleep: async (ms) => void waits.push(ms) }),
+      (e: unknown) => e instanceof AppError && e.code === 'rate_limited' && e.detail['retryAfterSec'] === 120,
+    );
+    assert.equal(seen.length, 1);
+    assert.deepEqual(waits, []);
+    assert.equal((await budgetOf(env, ws.id))!.spent_micro, 0);
   });
 
   test('a bad key stops at once and charges nothing', async () => {

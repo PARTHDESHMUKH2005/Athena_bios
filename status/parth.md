@@ -82,3 +82,8 @@ Built from the "Verify" build prompt, additive to the existing engine. All new w
 - Ran the real API (in-memory database) on Groq with a synthetic 8-page contract and 6 real questions: 6/6 correct, each citing the right page, total about $0.0014, mostly the economical tier (`openai/gpt-oss-20b`; one question went to `qwen/qwen3.8-27b`). Timeline, summary export and budget all worked; receipts show as missing, as designed.
 - Found and fixed: cost per good answer read $0 on Groq because spend counted only signed receipts. `/api/usage` now counts Groq's token-based cost and reports the part that is estimated as `spend_estimated_usd`.
 - Not covered: the browser UI on Groq, a PDF upload through the real browser, a long document (tokens-per-minute limit), deployment.
+
+## 2026-10-31: Groq rate-limit fix
+- Reproduced: a 40-page document with 8 back-to-back questions lost one answer to `rate_limited`. Cause: Groq's per-minute token limit is a sliding window and it asked for a 9 s wait, but `llm-groq.ts` capped its wait at 8 s, so every retry landed inside the same window.
+- Fix: honour `retry-after` in full (plus 250 ms), allow up to 25 s per wait and a 60 s deadline, and when the advised wait cannot fit, stop without sleeping and put `retryAfterSec` in the error detail. Re-run of the same session: 8/8 correct, no failures (49 s, because it waits instead of failing). Tests: `tests/a-groq.test.ts` (17).
+- Still not covered: browser UI on Groq, deployment, real prices.
