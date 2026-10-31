@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Art, Chev, Logo, StepCard, Tag } from '../components/bits';
+import { Art, Chev, Logo, Mark, StepCard, Tag } from '../components/bits';
 import { PROMPT_TOKENS } from '../lib/facts';
 import type { TraceStep } from '../lib/types';
 
@@ -105,30 +105,129 @@ function Nav() {
 
 /* ------------------------------ sections ------------------------------ */
 
+type Scene = {
+  tab: string; badge: string; color: string;
+  file: string; ask: string; found: string; model: string;
+  answer: string; title: string; chips: [string, string][];
+  head: [string, string, string]; rows: [string, string, string][];
+  tokens: string; cost: string;
+};
+
+const SCENES: Scene[] = [
+  {
+    tab: 'Contracts', badge: 'CT', color: '#f26b3a',
+    file: 'MSA_Northwind.pdf · 30 pages', ask: 'What are the payment terms, notice period and liability cap?',
+    found: '3 sections, pages 3, 5 and 7', model: 'economy: short lookup',
+    answer: 'Payment is due within 30 days of invoice. Either party can end the agreement with 60 days written notice, and liability is capped at the fees paid in the last 12 months.',
+    title: 'Key terms · MSA Northwind', chips: [['3 found', 'ok'], ['1 to review', 'warn']],
+    head: ['Term', 'Value', 'Source'],
+    rows: [['Payment terms', 'Net 30', 'p. 3 §4.1'], ['Notice period', '60 days', 'p. 5 §9.2'], ['Liability cap', '12 months of fees', 'p. 7 §11.3']],
+    tokens: '1,184 tok', cost: '$0.00031',
+  },
+  {
+    tab: 'Invoices', badge: 'IN', color: '#2a7de1',
+    file: 'INV-20418_Halden.pdf · 2 pages', ask: 'Do the line items add up to the invoice total?',
+    found: '2 sections, pages 1 and 2', model: 'economy: field check',
+    answer: 'Three line items sum to $4,820.00, which matches the subtotal. With 8% tax the total is $5,205.60, the same as the amount due on page 2.',
+    title: 'Line item check · INV-20418', chips: [['Totals match', 'ok']],
+    head: ['Item', 'Amount', 'Source'],
+    rows: [['Design retainer', '$3,200.00', 'p. 1'], ['Hosting, 12 months', '$1,140.00', 'p. 1'], ['Support hours (6)', '$480.00', 'p. 1']],
+    tokens: '842 tok', cost: '$0.00019',
+  },
+  {
+    tab: 'Reports', badge: 'RP', color: '#12a37f',
+    file: 'Annual_Policy_Report.pdf · 64 pages', ask: 'Summarize section 4 and list what changed from last year.',
+    found: '5 sections, pages 21 to 26', model: 'standard: summary',
+    answer: 'Section 4 covers remote work. It extends eligibility to contractors, adds a home office allowance and moves approvals from HR to team leads.',
+    title: 'Changes in section 4', chips: [['3 changes', 'ok'], ['1 new', 'warn']],
+    head: ['Change', 'Before', 'Source'],
+    rows: [['Eligibility', 'Employees only', 'p. 21 §4.1'], ['Home office allowance', 'None', 'p. 23 §4.3'], ['Approvals', 'HR team', 'p. 25 §4.6']],
+    tokens: '2,406 tok', cost: '$0.00088',
+  },
+];
+
+const SCENE_MS = 7000;
+
+function Mockup({ s }: { s: Scene }) {
+  return (
+    <div className="mock" aria-hidden="true">
+      <aside className="mock__side">
+        <div className="mock__brand"><Mark /> Athena</div>
+        <div className="mock__nav on">New question</div>
+        <div className="mock__nav">Documents</div>
+        <div className="mock__nav">Usage</div>
+        <div className="mock__nav">Receipts</div>
+        <div className="mock__group">Today</div>
+        {SCENES.map((x) => <div key={x.tab} className={`mock__hist${x === s ? ' on' : ''}`}>{x.file.split(' ·')[0]}</div>)}
+        <div className="mock__budget"><span>Allowance</span><b>$0.42 of $1.00</b><i><em style={{ width: '42%' }} /></i></div>
+      </aside>
+      <div className="mock__main">
+        <div className="mock__crumb">Workspace <span>/</span> <b>{s.tab}</b></div>
+        <div className="mock__scene" key={s.tab}>
+          <div className="mock__ask">{s.ask}</div>
+          <div className="mock__file">▤ {s.file}</div>
+          <ul className="mock__steps">
+            <li>⌕ Finding relevant sections · {s.found}</li>
+            <li>⑂ Choosing a model · {s.model}</li>
+            <li>✓ Verifying receipt · signature valid</li>
+          </ul>
+          <p className="mock__answer">{s.answer}</p>
+          <div className="mock__card">
+            <div className="mock__cardhead">
+              <b>{s.title}</b>
+              <span>{s.chips.map(([t, k]) => <em key={t} className={`mock__chip ${k}`}>{t}</em>)}</span>
+            </div>
+            <table>
+              <thead><tr>{s.head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+              <tbody>{s.rows.map((r) => <tr key={r[0]}>{r.map((c, i) => <td key={i}>{c}</td>)}</tr>)}</tbody>
+            </table>
+          </div>
+          <div className="mock__cost"><span>{s.model.split(':')[0]}</span><span>{s.tokens}</span><span>{s.cost}</span><span className="ok">Receipt verified</span></div>
+        </div>
+        <div className="mock__input">What would you like to know?<span>↵</span></div>
+      </div>
+    </div>
+  );
+}
+
 function Hero() {
-  const names = ['Policies', 'Reports', 'Invoices', 'Contracts'];
-  const [on, setOn] = useState(names.length - 1);
-  useEffect(() => {
-    if (reduceMotion()) return;
-    const t = setInterval(() => setOn((i) => (i + 1) % names.length), 2600);
-    return () => clearInterval(t);
-  }, [names.length]);
+  const [on, setOn] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const still = reduceMotion();
+  const next = () => setOn((i) => (i + 1) % SCENES.length);
   return (
     <section className="hero" aria-label="Introduction">
       <Art kind="terrain" />
       <div className="hero__shade" />
       <div className="wrap hero__in">
-        <div className="hero__row">
-          <p className="hero__tag">Ask any document anything. See exactly what each answer cost.</p>
-          <ul className="rotor" aria-label="Document types">
-            {names.map((n, i) => (
-              <li key={n} className={i === on ? 'on' : ''}>
-                {i === on ? <Link to="/start">Athena for {n} <span aria-hidden="true">↗</span></Link> : n}
-              </li>
-            ))}
-          </ul>
+        <div className="hero__grid">
+          <div className="hero__copy">
+            <h1 className="hero__title">Ask any document anything.</h1>
+            <p className="hero__sub">Answers with the page they came from, the model that wrote them and exactly what they cost.</p>
+            <div className="hero__ctas">
+              <Link className="pill pill--light" to="/start">Try Athena</Link>
+              <Link className="pill" to="/app">Open workspace</Link>
+            </div>
+          </div>
+          <div className="hero__screen" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+            <Mockup s={SCENES[on]!} />
+          </div>
         </div>
-        <p className="hero__small">A new generation of document answers</p>
+        <div className="hero__tabs" role="tablist" aria-label="Document types">
+          {SCENES.map((s, i) => (
+            <button key={s.tab} role="tab" aria-selected={i === on} className={`htab${i === on ? ' on' : ''}`} onClick={() => setOn(i)}>
+              <span className="htab__ic" style={{ background: s.color }}>{s.badge}</span>
+              <span>{s.tab}</span>
+              {i === on && !still && (
+                <i className="htab__bar" style={{ animationDuration: `${SCENE_MS}ms`, animationPlayState: paused ? 'paused' : 'running' }} onAnimationEnd={next} />
+              )}
+            </button>
+          ))}
+          <a className="htab htab--soon" href="#types">
+            <span className="htab__ic">+</span>
+            <span>Tickets and reviews next</span>
+          </a>
+        </div>
       </div>
     </section>
   );

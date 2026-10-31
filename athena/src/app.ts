@@ -10,7 +10,9 @@ import type { LlmDeps } from './llm.ts';
 import { ask, readMessage, resumePaused, retryCall, toMessageOut, usageFor } from './orchestrator.ts';
 import { PACK_IDS } from './packs/index.ts';
 import { hit } from './ratelimit.ts';
-import { verifyReceipt } from './receipts.ts';
+import { registerExportRoutes } from './routes/export.ts';
+import { registerReceiptRoutes } from './routes/receipts.ts';
+import { registerUsageRoutes } from './routes/usage.ts';
 import { sectionPages } from './sectioner.ts';
 import { AskBody, CreateChatBody, CreateDocumentBody, FinalizeBody, LIMITS, PagesBody, PutBudgetBody, ResumeBody } from './schemas.ts';
 import { loadTiers } from './tiers.ts';
@@ -358,7 +360,7 @@ export function createApp(deps: AppDeps = {}) {
     ).results;
     const rows = (
       await c.env.DB.prepare(
-        `SELECT id, role, content, mode, status, call_id, model_used, citations_json, pause_json, trace_json, created_at
+        `SELECT id, role, content, mode, status, call_id, model_used, citations_json, pause_json, trace_json, created_at, gate_json
          FROM messages WHERE chat_id = ? AND role IN ('user','assistant') ORDER BY created_at, rowid`,
       )
         .bind(c.req.param('id'))
@@ -436,103 +438,15 @@ export function createApp(deps: AppDeps = {}) {
 
   /* ------------------------------ receipts, retry, usage, export ------------------------------ */
 
-  app.get('/api/receipts/:call_id', async (c) => {
-    // E23
-    const row = await c.env.DB.prepare(
-      `SELECT id, purpose, tier, model_used, status, attempt, cost_micro, cost_without_prune_micro, cache_hit, prompt_tokens, completion_tokens, receipt_json, verify_status, created_at, finished_at
-       FROM llm_calls WHERE id = ? AND workspace_id = ?`,
-    )
-      .bind(c.req.param('call_id'), c.get('ws'))
-      .first<Record<string, unknown> & { receipt_json: string | null; verify_status: string; cost_micro: number | null; cost_without_prune_micro: number | null; cache_hit: number | null }>();
-    if (!row) throw new AppError('not_found');
-    const { receipt_json, cost_micro, cost_without_prune_micro, cache_hit, ...call } = row;
-    return c.json({
-      call: { ...call, cost_usd: cost_micro == null ? null : microToUsd(cost_micro), cost_without_prune_usd: cost_without_prune_micro == null ? null : microToUsd(cost_without_prune_micro), cache_hit: cache_hit === 1 },
-      receipt_json,
-      verify_status: row.verify_status,
-    });
-  });
-
-  app.post('/api/receipts/:call_id/verify', async (c) => {
-    // E24
-    const row = await c.env.DB.prepare('SELECT id, receipt_json FROM llm_calls WHERE id = ? AND workspace_id = ?').bind(c.req.param('call_id'), c.get('ws')).first<{ id: string; receipt_json: string | null }>();
-    if (!row) throw new AppError('not_found');
-    if (!row.receipt_json) throw new AppError('receipt_missing');
-    const status = await verifyReceipt(c.env, row.receipt_json, deps.llm?.fetch ?? fetch);
-    await c.env.DB.prepare('UPDATE llm_calls SET verify_status = ? WHERE id = ?').bind(status, row.id).run();
-    await logEvent(c.env, c.get('ws'), 'receipt_verified', row.id, { status });
-    return c.json({ verify_status: status });
-  });
+  registerReceiptRoutes(app, deps); // E23, E24 (src/routes/receipts.ts)
 
   app.post('/api/calls/:call_id/retry', async (c) => {
     // E25
     return c.json(await retryCall(c.env, execOf(c), c.get('ws'), c.req.param('call_id'), deps.llm));
   });
 
-  app.get('/api/usage', async (c) => {
-    // E26
-    const ws = c.get('ws');
-    const b = await getBudget(c.env.DB, ws);
-    const t = await c.env.DB.prepare(
-      `SELECT COUNT(*) AS calls, COALESCE(SUM(cache_hit), 0) AS hits,
-         COALESCE(SUM(CASE WHEN verify_status = 'verified' THEN 1 ELSE 0 END), 0) AS verified,
-         COALESCE(SUM(CASE WHEN receipt_json IS NOT NULL THEN 1 ELSE 0 END), 0) AS receipts
-       FROM llm_calls WHERE workspace_id = ? AND status = 'ok'`,
-    )
-      .bind(ws)
-      .first<{ calls: number; hits: number; verified: number; receipts: number }>();
-    const rows = (
-      await c.env.DB.prepare(
-        `SELECT m.id, m.chat_id, COALESCE(SUM(k.cost_micro), 0) AS cost
-         FROM messages m JOIN chats ch ON ch.id = m.chat_id AND ch.workspace_id = ?
-         LEFT JOIN llm_calls k ON substr(k.idempotency_key, 1, length(m.id) + 1) = m.id || ':'
-         WHERE m.role = 'assistant' AND m.status = 'done'
-         GROUP BY m.id ORDER BY m.chat_id, m.created_at, m.rowid`,
-      )
-        .bind(ws)
-        .all<{ id: string; chat_id: string; cost: number }>()
-    ).results;
-    const perChat = new Map<string, number>();
-    const series = rows.map((r) => {
-      const n = (perChat.get(r.chat_id) ?? 0) + 1;
-      perChat.set(r.chat_id, n);
-      return { chat_id: r.chat_id, n, cost_usd: microToUsd(r.cost) };
-    });
-    const spent = b?.spent_micro ?? 0;
-    const byChat = [...perChat.keys()].map((id) => {
-      const s = series.filter((x) => x.chat_id === id);
-      return { chat_id: id, answers: s.length, cost_usd: Number(s.reduce((a, x) => a + x.cost_usd, 0).toFixed(6)) };
-    });
-    return c.json({
-      totals: {
-        spent_usd: microToUsd(spent),
-        calls: t!.calls,
-        answers: rows.length,
-        avg_cost_per_answer_usd: rows.length ? microToUsd(Math.round(rows.reduce((a, r) => a + r.cost, 0) / rows.length)) : 0,
-        cache_hits: t!.hits,
-        receipts: t!.receipts,
-        receipts_verified: t!.verified,
-      },
-      by_chat: byChat,
-      series,
-    });
-  });
-
-  app.get('/api/export/receipts.jsonl', async (c) => {
-    // E27: each line keeps the receipt's raw bytes as a string, so signatures can be re-checked offline.
-    const rows = (
-      await c.env.DB.prepare(
-        `SELECT id, created_at, purpose, tier, model_used, cost_micro, cost_without_prune_micro, cache_hit, verify_status, receipt_json
-         FROM llm_calls WHERE workspace_id = ? AND receipt_json IS NOT NULL ORDER BY created_at, rowid`,
-      )
-        .bind(c.get('ws'))
-        .all<{ id: string; created_at: number; purpose: string; tier: string; model_used: string | null; cost_micro: number | null; cost_without_prune_micro: number | null; cache_hit: number | null; verify_status: string; receipt_json: string }>()
-    ).results;
-    const body = rows
-      .map((r) => JSON.stringify({ call_id: r.id, created_at: r.created_at, purpose: r.purpose, tier: r.tier, model_used: r.model_used, cost_micro: r.cost_micro, cost_without_prune_micro: r.cost_without_prune_micro, cache_hit: r.cache_hit === 1, verify_status: r.verify_status, receipt_raw: r.receipt_json }))
-      .join('\n');
-    return new Response(body ? body + '\n' : '', { headers: { 'content-type': 'application/x-ndjson', 'x-request-id': c.get('reqId') } });
-  });
+  registerUsageRoutes(app); // E26 (src/routes/usage.ts)
+  registerExportRoutes(app); // E27 (src/routes/export.ts)
 
   app.notFound((c) => c.json({ error: { code: 'not_found', message: 'Not found.', retryable: false, request_id: c.get('reqId') } }, 404));
 

@@ -9,11 +9,12 @@
     {
       "binding": "DB",
       "database_name": "athena",
-      "database_id": "REPLACE_AFTER_CREATING_THE_DATABASE",
+      "database_id": "8e31e5c4-7596-4d12-874b-49d40e23498d",
       "migrations_dir": "migrations"
     }
   ],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "athena-files" }],
+  "assets": { "directory": "./web/dist", "not_found_handling": "single-page-application", "run_worker_first": ["/api/*"] },
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
     "PRUNE_BASE_URL": "https://api.withprune.com/v1",
@@ -22,8 +23,10 @@
     "DEFAULT_BUDGET_USD": "0.25",
     "PER_CALL_CAP_USD": "0.05",
     "MAX_WORKSPACE_BUDGET_USD": "1.00",
-    "SESSION_LIMIT_PER_HOUR": "5",
-    "RETENTION_DAYS": "30"
+    "SESSION_LIMIT_PER_HOUR": "30",
+    "RETENTION_DAYS": "30",
+    "LLM_PROVIDER": "groq",
+    "MODEL_TIERS": "{\"economy\":{\"model\":\"gemini/gemini-3.5-flash\",\"inPerM\":0.3,\"outPerM\":2.5,\"minOutputTokens\":2000},\"standard\":{\"model\":\"gemini/gemini-3.5-flash\",\"inPerM\":0.3,\"outPerM\":2.5,\"minOutputTokens\":2000},\"strong\":{\"model\":\"gemini/gemini-3.5-flash\",\"inPerM\":0.3,\"outPerM\":2.5,\"minOutputTokens\":2000}}"
   },
   "observability": { "enabled": true }
 }

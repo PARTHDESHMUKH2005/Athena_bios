@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, download } from '../lib/api';
 import { usd } from '../lib/format';
 import type { UsageReport } from '../lib/types';
+import { CpgaPanel } from './CpgaPanel';
 
 export function UsagePanel({ refreshKey, chatTitles, onError }: { refreshKey: number; chatTitles: Record<string, string>; onError: (e: unknown) => void }) {
   const [u, setU] = useState<UsageReport | null>(null);
@@ -34,6 +35,7 @@ export function UsagePanel({ refreshKey, chatTitles, onError }: { refreshKey: nu
                 <div className="stat" key={k}><span className="label muted">{k}</span><b>{v}</b></div>
               ))}
             </div>
+            <CpgaPanel u={u} />
             <div>
               <span className="label muted">Cost per answer</span>
               <div className="bars" style={{ marginTop: 12 }}>

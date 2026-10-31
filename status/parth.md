@@ -52,3 +52,41 @@ Checklist from `memory.md` section 16, and how much the probe script covers:
 
 ## Notes for the team
 - Keep this checklist ticked as you go so everyone can see when Phase 0 is done.
+<<<<<<< HEAD
+=======
+
+## 2026-10-31: Verify feature and companions (built on the mock, not run against real Prune)
+Built from the "Verify" build prompt, additive to the existing engine. All new work is in new files except small hooks listed under "Touched files". No Phase 0 call was made (no key in this session), so receipt format details remain **unverified**; see `docs/receipts.md`.
+- **Point 1, verify savings:** three labelled cost numbers on every answer; `verify` returns a reason; tamper check (`receipt_override_raw`) that never saves; `bench/verify.py`; export meta line.
+- **Point 2, cost per good answer:** `GET /api/usage` adds `cpga`, `success_rate`, `gate`, `attempts_by_answer`; the usage screen shows them next to the checker's error rate (or "not measured yet").
+- **Point 3, no-AI check:** `src/gate.ts`, 46 labelled examples in `bench/gate_eval`, optional abstaining. Measured on the set: see `reports/gate_eval.json`.
+- **Point 4, pause and billing uncertain:** already built; acceptance tests added (`tests/a-budget.test.ts`).
+- **Point 5, protected numbers:** `src/protected.ts` and `tests/a-protected.test.ts`. Not wired into `context.ts` yet.
+- **Touched files outside my paths (additive, default-off):** `app.ts` (route blocks moved to `src/routes/`), `orchestrator.ts` (gate, baseline, abstain hooks), `context.ts` (bm25 scores), `env.ts`, `package.json`, `tests/helpers.ts` (loads every migration), `tests/api.test.ts` and `tests/bench.test.ts` (one assertion each, for the new export meta line), `athena.md` and `COMPONENTS.md` (endpoint rows), `web/` (new components; `Drawer`, `ChatPanel`, `UsagePanel`, `types`, `api` hooked in).
+- **Contract change (for Harshdeep and Keha):** E27 now starts with a `{"type":"meta",...}` line. E23, E24, E26 gained fields; nothing was removed or renamed.
+
+## 2026-10-31 (later): checked the verify work, next steps
+- Verify engine, cost per good answer, no-AI check and protected numbers are on `main` (e1eb2af). `npm test` passes 180/180 locally (needs Node 24, or Node 22 with `NODE_OPTIONS=--experimental-strip-types`); typecheck and the single-caller check pass.
+- PR `a/phase0-receipts-tiers`: default tiers now use the Gemini ids that answered real calls (`gemini/gemini-3.1-flash-lite`, `gemini/gemini-3.5-flash`, `gemini/gemini-3.1-pro-preview`) with an output floor for hidden thinking. **The prices are unverified placeholders**; set the real ones via `MODEL_TIERS`. `tests/llm.test.ts` now pins its own tier table. `docs/receipts.md` moves the confirmed items to Observed.
+- Still open for me, all needing a working key: cache hit (second identical call), `Idempotency-Key`, accepted `X-Prune-Pipeline-Mode` values (the default `auto` cut `max_tokens` 200 to 64), whether a third identical retry trips `agent_loop`, concurrent-spend behaviour, Ed25519 inside a Worker, real per-model prices, then the first real Phase 1 run and the routing benchmark.
+- Protected-number pruning (`src/protected.ts`) is not wired into `context.ts`; that file is Member 4's, so it needs their OK.
+
+## 2026-10-31 (Phase 3 start): "why this model" explanations
+- `explainRouting` and `explainEscalation` in `src/tiers.ts` turn the rule that fired into one plain sentence (tier, reason, and a note when the allowance forced a cheaper tier). They are built from rules, never a model call. The activity timeline now shows them (`tier` and `escalate` steps); the orchestrator change is those two lines only. Tests: `tests/a-routing.test.ts`.
+- Not done: a field on the answer itself for Keha's UI (that is an API addition for Harshdeep), the economical-only vs stronger-only vs Athena evaluation (needs a working key), and `bench/cases/` evaluation cases.
+
+## 2026-10-31 (later): parallel Groq path
+- `athena/src/llm-groq.ts` is a second model door with the same contract as `llm.ts` (reserve, ledger, bounded retries, billing-uncertain, settle); `LLM_PROVIDER=groq` selects it, `llm.ts` hands over in two lines. Tiers in `tiers.ts` (`DEFAULT_GROQ_TIERS`, `GROQ_MODEL_TIERS`), env vars appended to `env.ts`. The single-caller guard now allows the Groq host in that one file. 14 tests in `tests/a-groq.test.ts` (fake fetch); one live call on each tier passed.
+- Differences to know: no signed receipts (cost is an estimate, receipt shown as missing), no Groq-side cap or idempotency or cache, and a small tokens-per-minute limit. Prices are from memory and unverified.
+- The Groq key was pasted into a chat: rotate it. It is only in the gitignored `athena/.env`.
+
+## 2026-10-31: whole app run on Groq
+- Ran the real API (in-memory database) on Groq with a synthetic 8-page contract and 6 real questions: 6/6 correct, each citing the right page, total about $0.0014, mostly the economical tier (`openai/gpt-oss-20b`; one question went to `qwen/qwen3.8-27b`). Timeline, summary export and budget all worked; receipts show as missing, as designed.
+- Found and fixed: cost per good answer read $0 on Groq because spend counted only signed receipts. `/api/usage` now counts Groq's token-based cost and reports the part that is estimated as `spend_estimated_usd`.
+- Not covered: the browser UI on Groq, a PDF upload through the real browser, a long document (tokens-per-minute limit), deployment.
+
+## 2026-10-31: Groq rate-limit fix
+- Reproduced: a 40-page document with 8 back-to-back questions lost one answer to `rate_limited`. Cause: Groq's per-minute token limit is a sliding window and it asked for a 9 s wait, but `llm-groq.ts` capped its wait at 8 s, so every retry landed inside the same window.
+- Fix: honour `retry-after` in full (plus 250 ms), allow up to 25 s per wait and a 60 s deadline, and when the advised wait cannot fit, stop without sleeping and put `retryAfterSec` in the error detail. Re-run of the same session: 8/8 correct, no failures (49 s, because it waits instead of failing). Tests: `tests/a-groq.test.ts` (17).
+- Still not covered: browser UI on Groq, deployment, real prices.
+>>>>>>> 79c00e344889ec6f0b7352edb33f4ae83f609917

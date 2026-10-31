@@ -21,6 +21,19 @@ export interface Env {
   /** JSON: { economy|standard|strong: { model, inPerM, outPerM } } in USD per 1M tokens. */
   MODEL_TIERS?: string;
   ADMIN_TOKEN?: string;
+  // A: verification, citation gate and abstaining. All off unless set.
+  /** '1' lets a failed citation or number check trigger the one allowed escalation. Default: record only. */
+  GATE_ENFORCE?: string;
+  /** Minimum bm25 strength (-score) needed to call a model on a question. Unset: never abstain. */
+  ABSTAIN_MIN_SCORE?: string;
+  /** Smallest gap between the best and second-best bm25 strength. Unset or 0: ignored. */
+  ABSTAIN_MIN_MARGIN?: string;
+  // A: the parallel Groq model path. 'prune' (default) or 'groq'. Groq has no signed receipts and no server-side cap.
+  LLM_PROVIDER?: string;
+  GROQ_API_KEY?: string;
+  GROQ_BASE_URL?: string;
+  /** JSON like MODEL_TIERS, for the Groq models and their prices. */
+  GROQ_MODEL_TIERS?: string;
 }
 
 /** Subset of ExecutionContext the orchestrator needs. */

@@ -65,7 +65,9 @@ describe('happy path', () => {
     assert.equal((await h.call('POST', `/api/receipts/${a.json.usage.call_id}/verify`, tok, {})).json.verify_status, 'verified');
 
     const exp = await h.call('GET', '/api/export/receipts.jsonl', tok);
-    const lines = exp.text.trim().split('\n').map((l) => JSON.parse(l));
+    const all = exp.text.trim().split('\n').map((l) => JSON.parse(l));
+    assert.equal(all[0].type, 'meta', 'the first line of the proof file is a meta line');
+    const lines = all.filter((l) => l.type !== 'meta');
     assert.equal(lines.length, 1);
     assert.equal(lines[0].receipt_raw, rec.json.receipt_json, 'export keeps the exact receipt bytes');
 

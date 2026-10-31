@@ -3,3 +3,7 @@ PRUNE_API_KEY=
 ADMIN_TOKEN=
 # Point at the local mock (npm run mock) while developing:
 PRUNE_BASE_URL=http://127.0.0.1:8788/v1
+# Parallel Groq path: use Groq instead of Prune. Groq signs no receipts, so costs are estimated from token usage.
+# LLM_PROVIDER=groq
+# GROQ_API_KEY=
+# GROQ_MODEL_TIERS={"economy":{"model":"openai/gpt-oss-20b","inPerM":0.075,"outPerM":0.3}}

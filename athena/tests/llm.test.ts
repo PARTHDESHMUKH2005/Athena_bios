@@ -17,6 +17,14 @@ beforeEach(() => {
   mock.state.breakSignature = false;
 });
 
+// Pin the tier table so these money assertions do not move when the default models or prices change.
+const PINNED = {
+  MODEL_TIERS: JSON.stringify({
+    economy: { model: 'gpt-4o-mini', inPerM: 0.15, outPerM: 0.6, minOutputTokens: 0 },
+    standard: { model: 'gpt-4.1', inPerM: 2, outPerM: 8, minOutputTokens: 0 },
+    strong: { model: 'gpt-4o', inPerM: 2.5, outPerM: 10, minOutputTokens: 0 },
+  }),
+};
 const EST = 150; // economy: 200 prompt tokens * 0.15 + 200 output tokens * 0.6
 const req = (ws: string, key: string, over: Partial<CallRequest> = {}): CallRequest => ({
   workspaceId: ws,
@@ -40,7 +48,7 @@ const expectError = async (p: Promise<unknown>, code: string) => {
 
 describe('callModel', () => {
   test('success: cost comes from the receipt, receipt is stored raw and verified, Prune headers are sent', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const ws = await makeWorkspace(env);
     const r = await callModel(env, req(ws.id, 'k1'), { sleep: noSleep });
     assert.equal(r.costMicro, 412);
@@ -60,14 +68,14 @@ describe('callModel', () => {
     assert.equal(h['x-prune-cache'], 'normalized');
     assert.equal(h['x-prune-run-id'], 'm_test');
     assert.equal(h['x-prune-run-budget-usd'], '0.050000');
-    assert.equal(h['x-prune-max-steps'], '3');
+    assert.equal(h['x-prune-max-steps'], '6');
     assert.equal(h['x-prune-customer-id'], ws.id);
     assert.equal(h['x-prune-feature-id'], 'answer');
     assert.match(h['idempotency-key'], /^[0-9a-f]{64}$/);
   });
 
   test('the other auth header style works too', async () => {
-    const env = await makeEnv(mock, { PRUNE_AUTH: 'x-prune-key' });
+    const env = await makeEnv(mock, { ...PINNED, PRUNE_AUTH: 'x-prune-key' });
     const ws = await makeWorkspace(env);
     await callModel(env, req(ws.id, 'k1'), { sleep: noSleep });
     assert.equal(mock.calls[0].headers['x-prune-key'], 'test-prune-key');
@@ -75,7 +83,7 @@ describe('callModel', () => {
   });
 
   test('429 then success: two attempts, one llm_calls row, one charge', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const ws = await makeWorkspace(env);
     mock.queue.push('429');
     const r = await callModel(env, req(ws.id, 'k1'), { sleep: noSleep });
@@ -89,7 +97,7 @@ describe('callModel', () => {
   test('429 with a spend-cap shield code: exactly one attempt, budget_exhausted, nothing charged', async () => {
     for (const mode of ['429_spend_cap', '429_run_budget']) {
       mock.state.calls.length = 0;
-      const env = await makeEnv(mock);
+      const env = await makeEnv(mock, PINNED);
       const ws = await makeWorkspace(env);
       mock.queue.push(mode);
       await expectError(callModel(env, req(ws.id, 'k1'), { sleep: noSleep }), 'budget_exhausted');
@@ -101,7 +109,7 @@ describe('callModel', () => {
   });
 
   test('500 three times: stops after two retries, released, provider_unavailable', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const ws = await makeWorkspace(env);
     mock.queue.push('500', '500', '500');
     await expectError(callModel(env, req(ws.id, 'k1'), { sleep: noSleep }), 'provider_unavailable');
@@ -113,7 +121,7 @@ describe('callModel', () => {
   });
 
   test('Shield unavailable (503) is temporary: retried with the same idempotency key, then succeeds', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const ws = await makeWorkspace(env);
     mock.queue.push('shield_unavailable');
     const r = await callModel(env, req(ws.id, 'k1'), { sleep: noSleep });
@@ -123,7 +131,7 @@ describe('callModel', () => {
   });
 
   test('a loop stop (agent_loop) is final: one attempt, no retry', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const ws = await makeWorkspace(env);
     mock.queue.push('agent_loop');
     await expectError(callModel(env, req(ws.id, 'k1'), { sleep: noSleep }), 'shield_blocked');
@@ -132,7 +140,7 @@ describe('callModel', () => {
   });
 
   test('connection lost after sending: billing_uncertain, no blind retry, estimate charged', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const ws = await makeWorkspace(env);
     mock.queue.push('drop');
     await assert.rejects(callModel(env, req(ws.id, 'k1'), { sleep: noSleep }), (e: unknown) => e instanceof AppError && e.code === 'billing_uncertain' && typeof e.detail['callId'] === 'string');
@@ -145,7 +153,7 @@ describe('callModel', () => {
   test('bad key: no retry. Shield block: no retry. 402: no retry', async () => {
     for (const [mode, code] of [['401', 'provider_auth_failed'], ['shield', 'shield_blocked'], ['402', 'budget_exhausted']] as const) {
       mock.state.calls.length = 0;
-      const env = await makeEnv(mock);
+      const env = await makeEnv(mock, PINNED);
       const ws = await makeWorkspace(env);
       mock.queue.push(mode);
       await expectError(callModel(env, req(ws.id, 'k1'), { sleep: noSleep }), code);
@@ -155,7 +163,7 @@ describe('callModel', () => {
   });
 
   test('200 without a receipt is never a success: estimate charged, receipt_missing', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const ws = await makeWorkspace(env);
     mock.queue.push('no_receipt');
     await expectError(callModel(env, req(ws.id, 'k1'), { sleep: noSleep }), 'receipt_missing');
@@ -164,7 +172,7 @@ describe('callModel', () => {
   });
 
   test('allowance too small: nothing is sent and no row is created', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const ws = await makeWorkspace(env, { limitMicro: 100 });
     await assert.rejects(callModel(env, req(ws.id, 'k1'), { sleep: noSleep }), (e: unknown) => e instanceof AppError && e.code === 'budget_exhausted' && e.detail['local'] === true);
     assert.equal(mock.calls.length, 0);
@@ -172,7 +180,7 @@ describe('callModel', () => {
   });
 
   test('a repeated idempotency key is refused without a second call', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const ws = await makeWorkspace(env);
     await callModel(env, req(ws.id, 'k1'), { sleep: noSleep });
     await expectError(callModel(env, req(ws.id, 'k1'), { sleep: noSleep }), 'conflict');
@@ -182,7 +190,7 @@ describe('callModel', () => {
   });
 
   test('kill switch stops the call before anything is reserved', async () => {
-    const env = await makeEnv(mock, { KILL_SWITCH: '1' });
+    const env = await makeEnv(mock, { ...PINNED, KILL_SWITCH: '1' });
     const ws = await makeWorkspace(env);
     await expectError(callModel(env, req(ws.id, 'k1'), { sleep: noSleep }), 'kill_switch_on');
     assert.equal(mock.calls.length, 0);
@@ -190,7 +198,7 @@ describe('callModel', () => {
   });
 
   test('cache hit is free and flagged', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const ws = await makeWorkspace(env);
     mock.queue.push('cache_hit');
     const r = await callModel(env, req(ws.id, 'k1'), { sleep: noSleep });
@@ -206,13 +214,13 @@ describe('receipts', () => {
   }
 
   test('an ordinary receipt verifies locally from its raw bytes', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const rc = extractReceipt(await fetchRaw('ok'))!;
     assert.equal(await verifyReceipt(env, rc.raw), 'verified');
   });
 
   test('odd numbers and non-ASCII text verify only because raw bytes are kept', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const rc = extractReceipt(await fetchRaw('odd_numbers'))!;
     assert.match(rc.raw, /5e-05/);
     assert.equal(await verifyReceipt(env, rc.raw), 'verified');
@@ -225,17 +233,17 @@ describe('receipts', () => {
   });
 
   test('a tampered receipt fails', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     const rc = extractReceipt(await fetchRaw('ok'))!;
     assert.equal(await verifyReceipt(env, rc.raw.replace('0.000412', '0.000001')), 'failed');
   });
 
   test('a bad signature fails; an unreachable service gives unverified, never verified', async () => {
-    const env = await makeEnv(mock);
+    const env = await makeEnv(mock, PINNED);
     mock.state.breakSignature = true;
     const bad = extractReceipt(await fetchRaw('ok'))!;
     assert.equal(await verifyReceipt(env, bad.raw), 'failed');
-    const offline = await makeEnv(mock, { PRUNE_BASE_URL: 'http://127.0.0.1:1/v1' });
+    const offline = await makeEnv(mock, { ...PINNED, PRUNE_BASE_URL: 'http://127.0.0.1:1/v1' });
     mock.state.breakSignature = false;
     const good = extractReceipt(await fetchRaw('ok'))!;
     assert.equal(await verifyReceipt(offline, good.raw), 'unverified');

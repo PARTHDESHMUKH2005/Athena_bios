@@ -31,6 +31,8 @@ export interface RetrievedSection {
   page_start: number;
   page_end: number;
   token_est: number;
+  /** FTS5 bm25() when the section came from a search (more negative is a better match). */
+  score?: number;
 }
 
 export interface BuiltContext {
@@ -39,6 +41,8 @@ export interface BuiltContext {
   promptTokens: number;
   documentCount: number;
   memory: { summary: boolean; related: number; recent: number };
+  /** bm25 scores of the searched sections, best first. Empty when nothing matched the question. */
+  scores: number[];
 }
 
 const STOP = new Set(['the', 'a', 'an', 'of', 'to', 'in', 'is', 'are', 'was', 'were', 'what', 'which', 'who', 'how', 'do', 'does', 'did', 'and', 'or', 'not', 'near', 'for', 'on', 'it', 'this', 'that', 'with', 'me', 'my', 'be', 'by', 'as', 'at']);
@@ -102,7 +106,7 @@ export async function buildContext(
       sections = (
         await db
           .prepare(
-            `SELECT s.id, s.document_id, s.title, s.text, s.page_start, s.page_end, s.token_est
+            `SELECT s.id, s.document_id, s.title, s.text, s.page_start, s.page_end, s.token_est, bm25(sections_fts) AS score
              FROM sections_fts JOIN sections s ON s.id = sections_fts.rowid
              WHERE sections_fts MATCH ? AND s.document_id IN (${ph})
              ORDER BY bm25(sections_fts) LIMIT ?`,
@@ -114,6 +118,7 @@ export async function buildContext(
       sections = [];
     }
   }
+  const scores = sections.map((s) => s.score).filter((x): x is number => typeof x === 'number');
   if (!sections.length && docIds.length) {
     const all = (
       await db
@@ -203,5 +208,6 @@ export async function buildContext(
     promptTokens: estTokens(messages.map((m) => m.content).join('\n')),
     documentCount: docIds.length,
     memory: { summary: !!summary, related: related.length, recent: recent.length },
+    scores,
   };
 }

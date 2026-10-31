@@ -1,6 +1,6 @@
 // The orchestrator: runs one question through the whole pipeline (athena.md 2.5). There are no autonomous
 // agent loops by design. The "agents" are fixed roles, each a module with one job, and Prune's
-// X-Prune-Max-Steps caps any run at 3 calls (answer, one escalation, one spare):
+// X-Prune-Max-Steps caps any run at 6 requests (every HTTP attempt counts, retries included):
 //   retrieval agent   -> context.ts      router agent   -> tiers.ts
 //   answer agent      -> llm.ts          verifier agent -> receipts.ts + answer.ts
 //   memory agent      -> maybeSummarize  budget guard   -> budget.ts
@@ -15,9 +15,13 @@ import { AppError } from './errors.ts';
 import { assertNotKilled } from './killswitch.ts';
 import { callModel } from './llm.ts';
 import type { CallResult, LlmDeps } from './llm.ts';
+import { ABSTAIN_GATE, gateForAnswer, recordAnswerExtras } from './extras.ts';
+import type { GateStored } from './extras.ts';
+import { ABSTAIN_ANSWER, gateSummary, shouldAbstain } from './gate.ts';
+import type { GateResult } from './gate.ts';
 import { scanOutput } from './outputscan.ts';
 import { hit } from './ratelimit.ts';
-import { estimateMicro, loadTiers, lowerTier, nextTier, pickTier } from './tiers.ts';
+import { estimateMicro, explainEscalation, explainRouting, loadTiers, lowerTier, nextTier, pickTier } from './tiers.ts';
 import type { Purpose, Tier } from './tiers.ts';
 import { Trace } from './trace.ts';
 import type { TraceStep } from './trace.ts';
@@ -49,6 +53,8 @@ export interface MessageOut {
   pause: PauseInfo | null;
   trace: TraceStep[];
   created_at: number;
+  /** Result of the no-AI citation and number check (src/gate.ts), when one was recorded. */
+  gate?: GateStored | null;
 }
 export interface UsageOut {
   call_id: string;
@@ -57,6 +63,10 @@ export interface UsageOut {
   cost_usd: number;
   cache_hit: boolean;
   verify_status: string;
+  /** Signed by Prune: what this answer would have cost without Prune's savings. Null when the receipt has no such field. */
+  cost_without_prune_usd?: number | null;
+  /** Athena's own estimate of a naive system's cost (NOT signed). Null when not recorded. */
+  naive_baseline_usd?: number | null;
 }
 export interface AskResult {
   message: MessageOut;
@@ -75,12 +85,13 @@ interface MessageRow {
   pause_json: string | null;
   trace_json: string | null;
   created_at: number;
+  gate_json?: string | null;
 }
 
 export async function readMessage(db: D1Database, id: string): Promise<MessageOut> {
   const r = await db
     .prepare(
-      `SELECT id, role, content, mode, status, call_id, model_used, citations_json, pause_json, trace_json, created_at
+      `SELECT id, role, content, mode, status, call_id, model_used, citations_json, pause_json, trace_json, created_at, gate_json
        FROM messages WHERE id = ?`,
     )
     .bind(id)
@@ -102,6 +113,7 @@ export function toMessageOut(r: MessageRow): MessageOut {
     pause: parseJsonSafe<PauseInfo | null>(r.pause_json, null),
     trace: parseJsonSafe<TraceStep[]>(r.trace_json, []),
     created_at: r.created_at,
+    gate: parseJsonSafe<GateStored | null>(r.gate_json, null),
   };
 }
 
@@ -111,16 +123,17 @@ export async function usageFor(db: D1Database, asstId: string): Promise<UsageOut
   const rows = (
     await db
       .prepare(
-        `SELECT id, tier, model_used, cost_micro, cache_hit, verify_status, status FROM llm_calls
+        `SELECT id, tier, model_used, cost_micro, cost_without_prune_micro, naive_cost_micro, cache_hit, verify_status, status FROM llm_calls
          WHERE substr(idempotency_key, 1, ?) = ? ORDER BY created_at, rowid`,
       )
       .bind(prefix.length, prefix)
-      .all<{ id: string; tier: string; model_used: string | null; cost_micro: number | null; cache_hit: number | null; verify_status: string; status: string }>()
+      .all<{ id: string; tier: string; model_used: string | null; cost_micro: number | null; cost_without_prune_micro: number | null; naive_cost_micro: number | null; cache_hit: number | null; verify_status: string; status: string }>()
   ).results;
   const ok = rows.filter((r) => r.status === 'ok');
   const last = ok[ok.length - 1];
   if (!last) return null;
   const total = rows.reduce((s, r) => s + (r.cost_micro ?? 0), 0);
+  const withoutParts = ok.map((r) => r.cost_without_prune_micro).filter((x): x is number => x != null);
   return {
     call_id: last.id,
     model_used: last.model_used,
@@ -128,6 +141,8 @@ export async function usageFor(db: D1Database, asstId: string): Promise<UsageOut
     cost_usd: microToUsd(total),
     cache_hit: last.cache_hit === 1,
     verify_status: last.verify_status,
+    cost_without_prune_usd: withoutParts.length ? microToUsd(withoutParts.reduce((a, b) => a + b, 0)) : null,
+    naive_baseline_usd: last.naive_cost_micro == null ? null : microToUsd(last.naive_cost_micro),
   };
 }
 
@@ -245,10 +260,15 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
       short,
     });
     await trace.add('context', `${built.sections.length} sections, pages ${pagesLabel(built.sections)}`);
+    // Weak retrieval means the document probably does not hold the answer: say so without calling any model.
+    if (env.ABSTAIN_MIN_SCORE !== undefined && env.ABSTAIN_MIN_SCORE !== '' && p.mode === 'answer' && built.documentCount > 0) {
+      if (shouldAbstain(built.scores, { minStrength: numEnv(env.ABSTAIN_MIN_SCORE, 0), minMargin: numEnv(env.ABSTAIN_MIN_MARGIN, 0) })) return abstain(db, trace, p);
+    }
     const picked = pickTier({ purpose, question: p.question, contextTokens: built.promptTokens, documentCount: built.documentCount });
     const tier = lowerTier(picked.tier, a.down);
-    await trace.add('tier', `${tier}: ${picked.reason}`);
-    const maxOut = short ? SHORT_OUT : MAX_OUT[p.mode];
+    await trace.add('tier', explainRouting(tier, picked.reason, { lowered: tier !== picked.tier }));
+    // Models that spend output tokens on hidden thinking (Gemini 3.x) can need a floor, set per tier in MODEL_TIERS.
+    const maxOut = Math.max(short ? SHORT_OUT : MAX_OUT[p.mode], tiers[tier].minOutputTokens ?? 0);
     const est = estimateMicro(tiers[tier], built.promptTokens, maxOut);
     await trace.add('reserve', `up to $${(est / 1e6).toFixed(6)}`);
     try {
@@ -262,7 +282,9 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
           runId: `${p.asstId}:r${attemptNo}`,
           purpose,
           workload: p.mode === 'extract' ? 'structured_extraction' : 'rag',
-          cache: p.mode === 'answer' ? 'normalized' : 'exact',
+          // Never 'normalized' or 'semantic' for answers: on the real Prune a different question was served a cached answer
+          // to an earlier one (the document context dominates the prompt). 'exact' only matches an identical request.
+          cache: 'exact',
           tier,
           messages: built.messages,
           promptTokens: built.promptTokens,
@@ -292,7 +314,10 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
   let { call } = first;
   const { built, tier } = first;
   const calls: CallResult[] = [call];
-  await trace.add('call', call.attempts > 1 ? `succeeded on attempt ${call.attempts}` : 'attempt 1');
+  await trace.add(
+    'call',
+    [call.attempts > 1 ? `succeeded on attempt ${call.attempts}` : 'attempt 1', call.truncated ? 'cut off at the output limit' : '', call.outputCapApplied ? 'Prune shortened the output limit' : ''].filter(Boolean).join(', '),
+  );
   await trace.add('verify', `receipt ${call.verifyStatus}${call.cacheHit ? ', cache hit' : ''}${call.shieldSignal ? `, shield: ${call.shieldSignal}` : ''}`);
 
   // Validate the output; escalate to the next tier at most once.
@@ -303,10 +328,17 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
           const v = validateAnswer(text, built.sections);
           return p.mode === 'summarize' ? { ...v, ok: true } : v;
         })();
-  let verdict = check(call.text);
+  // Optional (GATE_ENFORCE=1): a failed citation or number check counts as a failed validation, so it can use the one escalation.
+  const enforceGate = env.GATE_ENFORCE === '1' && p.mode === 'answer';
+  const gated = async (text: string, v: ReturnType<typeof check>) => {
+    if (!enforceGate || !v.ok || !('citations' in v)) return v;
+    const g: GateResult = await gateForAnswer(db, { answer: text, citations: v.citations, sections: built.sections }).catch(() => ({ pass: true }) as GateResult);
+    return g.pass ? v : { ...v, ok: false, reason: gateSummary(g) };
+  };
+  let verdict = await gated(call.text, check(call.text));
   if (!verdict.ok && tier !== 'strong') {
     const target = nextTier(tier);
-    await trace.add('escalate', `${tier} to ${target}: ${verdict.reason}`);
+    await trace.add('escalate', explainEscalation(tier, target, verdict.reason));
     try {
       const retry = await callModel(
         env,
@@ -320,7 +352,7 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
           tier: target,
           messages: built.messages,
           promptTokens: built.promptTokens,
-          maxOutputTokens: first.short ? SHORT_OUT : MAX_OUT[p.mode],
+          maxOutputTokens: Math.max(first.short ? SHORT_OUT : MAX_OUT[p.mode], tiers[target].minOutputTokens ?? 0),
           runBudgetMicro: perCall,
           idempotencyKey: `${baseKey}:esc`,
           json: p.mode === 'extract',
@@ -328,7 +360,7 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
         p.deps,
       );
       calls.push(retry);
-      const v2 = check(retry.text);
+      const v2 = await gated(retry.text, check(retry.text));
       if (v2.ok || p.mode !== 'extract') {
         call = retry;
         verdict = v2;
@@ -340,6 +372,14 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
   }
 
   let content = call.text;
+  // Never present a cut-off answer as complete. An empty one means the model used its whole output limit before writing.
+  if (call.truncated && p.mode !== 'extract') {
+    content = content.trim()
+      ? `${content}
+
+(This answer was cut off because it reached the output limit.)`
+      : 'The model used its whole output limit before writing an answer. Try again, or ask a shorter question.';
+  }
   let citations: Citation[] = [];
   if (p.mode === 'extract') {
     if (!('invoice' in verdict)) return failMessage(db, trace, p.asstId, new AppError('validation_failed', 'Could not read this invoice into fields. Nothing is shown as verified.'), call.callId);
@@ -362,10 +402,40 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
     db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').bind(nowSec(), p.chatId),
   ]);
 
+  // Gate result and naive baseline are informational: stored after the answer, errors swallowed inside.
+  await recordAnswerExtras(env, {
+    ws: p.ws,
+    chatId: p.chatId,
+    userId: p.userId,
+    asstId: p.asstId,
+    question: p.question,
+    mode: p.mode,
+    answer: content,
+    citations,
+    sections: built.sections,
+    systemText: built.messages[0]?.content ?? '',
+    callId: call.callId,
+    tier: call.tier,
+    outputTokens: call.completionTokens,
+    model: call.modelUsed,
+  });
+
   // Memory runs after the answer, outside the user's wait. A failure here never affects the answer.
   exec.waitUntil(maybeSummarize(env, p.ws, p.chatId, p.deps).catch(() => undefined));
 
   return { message: await readMessage(db, p.asstId), usage: await usageFor(db, p.asstId) };
+}
+
+/** Answer "not in the document" from retrieval strength alone. No model call, no cost, no receipt. */
+async function abstain(db: D1Database, trace: Trace, p: RunParams): Promise<AskResult> {
+  await trace.add('abstain', 'the search found nothing strong enough; no model was called');
+  await db.batch([
+    db
+      .prepare(`UPDATE messages SET content = ?, status = 'done', call_id = NULL, citations_json = '[]', trace_json = ?, gate_json = ? WHERE id = ?`)
+      .bind(ABSTAIN_ANSWER, JSON.stringify(trace.steps), JSON.stringify(ABSTAIN_GATE), p.asstId),
+    db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').bind(nowSec(), p.chatId),
+  ]);
+  return { message: await readMessage(db, p.asstId), usage: null };
 }
 
 async function pause(

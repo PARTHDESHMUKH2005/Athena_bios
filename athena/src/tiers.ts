@@ -9,19 +9,42 @@ export interface TierConfig {
   inPerM: number;
   /** USD per 1M output tokens. */
   outPerM: number;
+  /** Floor for max_tokens, for models that spend output tokens on hidden thinking (e.g. Gemini 3.x). Default 0. */
+  minOutputTokens?: number;
 }
 export type TierTable = Record<Tier, TierConfig>;
 
 /**
- * PLACEHOLDERS. Models are addressed by capability tier in code; the concrete model ids and prices
- * come from MODEL_TIERS and must be set after checking which models are enabled in the Prune vault
- * (Phase 0 item 11). Reconcile estimates against real receipts.
+ * Model ids are the Gemini models that answered a real call through Prune on 2026-10-31 (PHASE0-FINDINGS.md);
+ * only a Gemini key was working in the vaults then. PRICES ARE UNVERIFIED PLACEHOLDERS: Prune's /v1/models
+ * returns no prices, so set the real ones via MODEL_TIERS and reconcile against receipts
+ * (cost_with_prune_usd). Gemini 3.x spends output tokens on hidden thinking, hence the floor.
  */
 export const DEFAULT_TIERS: TierTable = {
-  economy: { model: 'gpt-4o-mini', inPerM: 0.15, outPerM: 0.6 },
-  standard: { model: 'gpt-4.1', inPerM: 2, outPerM: 8 },
-  strong: { model: 'gpt-4o', inPerM: 2.5, outPerM: 10 },
+  economy: { model: 'gemini/gemini-3.1-flash-lite', inPerM: 0.1, outPerM: 0.4, minOutputTokens: 1024 },
+  standard: { model: 'gemini/gemini-3.5-flash', inPerM: 0.3, outPerM: 2.5, minOutputTokens: 1024 },
+  strong: { model: 'gemini/gemini-3.1-pro-preview', inPerM: 1.25, outPerM: 10, minOutputTokens: 2048 },
 };
+
+/**
+ * Groq tiers (LLM_PROVIDER=groq). Ids are the chat models this account's key listed on 2026-10-31. PRICES ARE FROM
+ * MEMORY, NOT VERIFIED (Groq's /models returns none): set GROQ_MODEL_TIERS from the Groq pricing page before
+ * trusting any cost number. The floors leave room for hidden reasoning tokens, which Groq bills as output.
+ */
+export const DEFAULT_GROQ_TIERS: TierTable = {
+  economy: { model: 'openai/gpt-oss-20b', inPerM: 0.075, outPerM: 0.3, minOutputTokens: 1024 },
+  standard: { model: 'qwen/qwen3.8-27b', inPerM: 0.3, outPerM: 0.6, minOutputTokens: 1024 },
+  strong: { model: 'openai/gpt-oss-120b', inPerM: 0.15, outPerM: 0.6, minOutputTokens: 1536 },
+};
+
+export function loadGroqTiers(env: Pick<Env, 'GROQ_MODEL_TIERS'>): TierTable {
+  const custom = parseJsonSafe<Partial<TierTable>>(env.GROQ_MODEL_TIERS, {});
+  return {
+    economy: { ...DEFAULT_GROQ_TIERS.economy, ...custom.economy },
+    standard: { ...DEFAULT_GROQ_TIERS.standard, ...custom.standard },
+    strong: { ...DEFAULT_GROQ_TIERS.strong, ...custom.strong },
+  };
+}
 
 export function loadTiers(env: Pick<Env, 'MODEL_TIERS'>): TierTable {
   const custom = parseJsonSafe<Partial<TierTable>>(env.MODEL_TIERS, {});
@@ -43,6 +66,23 @@ export function estimateMicro(cfg: TierConfig, promptTokens: number, maxOutputTo
 export type Purpose = 'answer' | 'summarize' | 'extract' | 'ocr' | 'memory_summary' | 'repair';
 
 const STRONG_WORDS = /\b(compare|comparison|versus|vs\.?|calculate|compute|reconcile|discrepanc\w*)\b/i;
+
+const TIER_NAME: Record<Tier, string> = { economy: 'the economical model', standard: 'the standard model', strong: 'the stronger model' };
+
+/**
+ * One plain sentence for the user: which tier handled the question and why. Built from the rule that fired
+ * (never from a model), so it can be shown on every answer for free. Pass `lowered` when budget pressure
+ * moved the question down from the tier the rules wanted.
+ */
+export function explainRouting(tier: Tier, reason: string, opts: { lowered?: boolean } = {}): string {
+  const base = `Used ${TIER_NAME[tier]}: ${reason}.`;
+  return opts.lowered ? `${base} Chosen one step cheaper to stay within your allowance.` : base;
+}
+
+/** Same, for the single allowed step up after a failed citation or number check. */
+export function explainEscalation(from: Tier, to: Tier, why: string): string {
+  return `Re-asked with ${TIER_NAME[to]} instead of ${TIER_NAME[from]}: ${why}. This is the only retry on a stronger model.`;
+}
 
 /** Rules only, no model call. */
 export function pickTier(input: {

@@ -1,12 +1,14 @@
-// THE ONLY MODEL CALLER. Nothing else in the repo may fetch a model host (scripts/check-single-caller.mjs
-// enforces this in CI). Every call goes to Prune's one base URL with the Prune key; provider keys live in
-// the Prune vault.
+// THE MODEL CALLER. Nothing but this file and its sibling src/llm-groq.ts may fetch a model host
+// (scripts/check-single-caller.mjs enforces this in CI). By default every call goes to Prune's one base URL with
+// the Prune key; provider keys live in the Prune vault. LLM_PROVIDER=groq hands the call to llm-groq.ts.
 import type { Env, Fetcher } from './env.ts';
 import { AppError, classifyHttp, classifyNetworkError } from './errors.ts';
 import type { ErrorCode } from './errors.ts';
 import { assertNotKilled } from './killswitch.ts';
 import { getBudget, releaseStatement, remainingMicro, reserve, settleStatement } from './budget.ts';
-import { extractReceipt, verifyReceipt } from './receipts.ts';
+import { parseCompletion } from './completion.ts';
+import { callGroq } from './llm-groq.ts';
+import { extractReceipt, verifyReceiptDetailed } from './receipts.ts';
 import type { VerifyStatus } from './receipts.ts';
 import { estimateMicro, loadTiers } from './tiers.ts';
 import type { Purpose, Tier } from './tiers.ts';
@@ -55,6 +57,10 @@ export interface CallResult {
   attempts: number;
   /** X-Prune-Shield-Code on a 200 response (e.g. prompt_injection_signal), else null. */
   shieldSignal: string | null;
+  /** The model stopped at the output limit: the answer may be cut off, or empty if hidden thinking used it all. */
+  truncated: boolean;
+  /** Prune's default pipeline shortened our max_tokens for this call (an adaptive cap; there is no per-request switch). */
+  outputCapApplied: boolean;
 }
 
 export interface LlmDeps {
@@ -65,6 +71,12 @@ export interface LlmDeps {
 
 const MAX_RETRIES = 2;
 const DEADLINE_MS = 45_000;
+// Prune counts every HTTP request as a step, including retries and requests that fail at the provider (seen on
+// the real service: 'Agent step budget exceeded (2/1)'). Three attempts for the answer plus three for an
+// escalation is the most a run can legitimately need.
+const MAX_STEPS_PER_RUN = (MAX_RETRIES + 1) * 2;
+// Prune stops a run that repeats the same step three times (agent_loop, seen on the real service with three identical
+// retries). A retry therefore goes out under its own run id suffix; our local budget gate still bounds total spend.
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function buildHeaders(env: Env, req: CallRequest, idem: string): Record<string, string> {
@@ -74,7 +86,7 @@ function buildHeaders(env: Env, req: CallRequest, idem: string): Record<string, 
     'x-prune-cache': req.cache,
     'x-prune-run-id': req.runId,
     'x-prune-run-budget-usd': (req.runBudgetMicro / 1e6).toFixed(6),
-    'x-prune-max-steps': '3',
+    'x-prune-max-steps': String(MAX_STEPS_PER_RUN),
     'x-prune-customer-id': req.workspaceId,
     'x-prune-feature-id': req.purpose,
     'idempotency-key': idem,
@@ -85,6 +97,8 @@ function buildHeaders(env: Env, req: CallRequest, idem: string): Record<string, 
 }
 
 export async function callModel(env: Env, req: CallRequest, deps: LlmDeps = {}): Promise<CallResult> {
+  // The parallel workflow: same contract, a different provider. Selected per deployment, never per request.
+  if (env.LLM_PROVIDER === 'groq') return callGroq(env, req, deps);
   const db = env.DB;
   const doFetch = deps.fetch ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
@@ -163,7 +177,7 @@ export async function callModel(env: Env, req: CallRequest, deps: LlmDeps = {}):
     let res: Response;
     let text: string;
     try {
-      res = await doFetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(Math.min(remaining, 40_000)) });
+      res = await doFetch(url, { method: 'POST', headers: attempt === 1 ? headers : { ...headers, 'x-prune-run-id': `${req.runId}.a${attempt}` }, body, signal: AbortSignal.timeout(Math.min(remaining, 40_000)) });
       text = await res.text();
     } catch (e) {
       if (classifyNetworkError(e) === 'not_sent') {
@@ -181,7 +195,7 @@ export async function callModel(env: Env, req: CallRequest, deps: LlmDeps = {}):
 
     if (!res.ok) {
       const shield = res.headers.get('x-prune-shield-code');
-      const verdict = classifyHttp(res.status, shield);
+      const verdict = classifyHttp(res.status, shield, text);
       lastVerdict = { code: verdict.code, shield, detail: `HTTP ${res.status}${shield ? ` [${shield}]` : ''}` };
       if (verdict.retry && attempt <= MAX_RETRIES) {
         await sleep(backoff(attempt, res.headers.get('retry-after')));
@@ -191,7 +205,7 @@ export async function callModel(env: Env, req: CallRequest, deps: LlmDeps = {}):
     }
 
     // 200: need a readable, signed receipt or we do not present this as a success.
-    let data: { choices?: { message?: { content?: string } }[]; usage?: Record<string, number>; model?: string };
+    let data: unknown;
     try {
       data = JSON.parse(text);
     } catch {
@@ -204,8 +218,10 @@ export async function callModel(env: Env, req: CallRequest, deps: LlmDeps = {}):
       throw new AppError('receipt_missing', undefined, { detail: { callId, estMicro: est } });
     }
 
-    const promptTokens = data.usage?.['prompt_tokens'] ?? req.promptTokens;
-    const completionTokens = data.usage?.['completion_tokens'] ?? 0;
+    const parsed = parseCompletion(data);
+    const promptTokens = parsed.promptTokens ?? req.promptTokens;
+    // The receipt's completion_tokens is what was billed (it includes Gemini's hidden thinking tokens).
+    const completionTokens = receipt.completionTokens ?? parsed.completionTokens ?? 0;
     const cacheHit = receipt.cacheHit ?? res.headers.get('x-prune-cache-hit') === 'true';
     let costMicro = receipt.costMicro;
     let costSource: 'receipt' | 'estimate' = 'receipt';
@@ -214,12 +230,16 @@ export async function callModel(env: Env, req: CallRequest, deps: LlmDeps = {}):
       costMicro = cacheHit ? 0 : Math.ceil(promptTokens * cfg.inPerM + completionTokens * cfg.outPerM);
     }
     let verifyStatus: VerifyStatus = 'unverified';
+    let verifyReason: string | null = null;
     try {
-      verifyStatus = await verifyReceipt(env, receipt.raw, doFetch);
+      const v = await verifyReceiptDetailed(env, receipt.raw, doFetch, { expectedCostMicro: costMicro });
+      verifyStatus = v.status;
+      verifyReason = v.reason;
     } catch {
       verifyStatus = 'unverified';
     }
-    const modelUsed = res.headers.get('x-prune-routed-model') ?? data.model ?? receipt.model ?? null;
+    const modelUsed = res.headers.get('x-prune-routed-model') ?? receipt.model ?? parsed.model ?? null;
+    const outputCapApplied = receipt.outputCapApplied === true || res.headers.get('x-prune-output-cap-applied') === 'true';
     // prompt_injection_signal is a 200: flagged input went through in detect mode. Surface it, do not fail.
     const shieldSignal = res.headers.get('x-prune-shield-code');
 
@@ -227,16 +247,17 @@ export async function callModel(env: Env, req: CallRequest, deps: LlmDeps = {}):
       db
         .prepare(
           `UPDATE llm_calls SET status = 'ok', model_used = ?, attempt = ?, cost_micro = ?, cost_without_prune_micro = ?,
-             cache_hit = ?, prompt_tokens = ?, completion_tokens = ?, receipt_json = ?, verify_status = ?, finished_at = ?
+             cache_hit = ?, prompt_tokens = ?, completion_tokens = ?, receipt_json = ?, verify_status = ?, finished_at = ?,
+             verify_reason = ?, verified_at = ?
            WHERE id = ?`,
         )
-        .bind(modelUsed, attempt, costMicro, receipt.costWithoutMicro, cacheHit ? 1 : 0, promptTokens, completionTokens, receipt.raw, verifyStatus, nowSec(), callId),
+        .bind(modelUsed, attempt, costMicro, receipt.costWithoutMicro, cacheHit ? 1 : 0, promptTokens, completionTokens, receipt.raw, verifyStatus, nowSec(), verifyReason, nowSec(), callId),
       settleStatement(db, req.workspaceId, est, costMicro),
     ]);
 
     return {
       callId,
-      text: data.choices?.[0]?.message?.content ?? '',
+      text: parsed.text,
       tier: req.tier,
       modelUsed,
       costMicro,
@@ -248,6 +269,8 @@ export async function callModel(env: Env, req: CallRequest, deps: LlmDeps = {}):
       verifyStatus,
       attempts: attempt,
       shieldSignal,
+      truncated: parsed.truncated,
+      outputCapApplied,
     };
   }
 
