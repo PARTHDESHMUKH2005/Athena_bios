@@ -26,6 +26,26 @@ export const DEFAULT_TIERS: TierTable = {
   strong: { model: 'gemini/gemini-3.1-pro-preview', inPerM: 1.25, outPerM: 10, minOutputTokens: 2048 },
 };
 
+/**
+ * Groq tiers (LLM_PROVIDER=groq). Ids are the chat models this account's key listed on 2026-10-31. PRICES ARE FROM
+ * MEMORY, NOT VERIFIED (Groq's /models returns none): set GROQ_MODEL_TIERS from the Groq pricing page before
+ * trusting any cost number. The floors leave room for hidden reasoning tokens, which Groq bills as output.
+ */
+export const DEFAULT_GROQ_TIERS: TierTable = {
+  economy: { model: 'openai/gpt-oss-20b', inPerM: 0.075, outPerM: 0.3, minOutputTokens: 1024 },
+  standard: { model: 'qwen/qwen3.8-27b', inPerM: 0.3, outPerM: 0.6, minOutputTokens: 1024 },
+  strong: { model: 'openai/gpt-oss-120b', inPerM: 0.15, outPerM: 0.6, minOutputTokens: 1536 },
+};
+
+export function loadGroqTiers(env: Pick<Env, 'GROQ_MODEL_TIERS'>): TierTable {
+  const custom = parseJsonSafe<Partial<TierTable>>(env.GROQ_MODEL_TIERS, {});
+  return {
+    economy: { ...DEFAULT_GROQ_TIERS.economy, ...custom.economy },
+    standard: { ...DEFAULT_GROQ_TIERS.standard, ...custom.standard },
+    strong: { ...DEFAULT_GROQ_TIERS.strong, ...custom.strong },
+  };
+}
+
 export function loadTiers(env: Pick<Env, 'MODEL_TIERS'>): TierTable {
   const custom = parseJsonSafe<Partial<TierTable>>(env.MODEL_TIERS, {});
   return {

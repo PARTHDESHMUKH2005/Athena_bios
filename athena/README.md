@@ -40,6 +40,25 @@ Add `[[mock:429]]`, `[[mock:500]]`, `[[mock:drop]]` or `[[mock:429_spend_cap]]` 
 3. Create D1 + R2, apply every file in `migrations/` in order (`0001_init.sql`, then `0002_verify_gate.sql`), set `database_id` in `wrangler.jsonc`, then `cf migrate` to move to `cloudflare.config.ts`.
 4. Do Phase 0 (`../athena.md` 4.9): confirm the auth header (`PRUNE_AUTH`), real receipt fields, shield code strings, and set real `MODEL_TIERS` ids and prices.
 
+## Run on Groq (the parallel path)
+
+Same engine, a second model door: `src/llm-groq.ts`, chosen per deployment with `LLM_PROVIDER=groq`. Prune stays the default.
+
+```bash
+# athena/.dev.vars (wrangler dev) or athena/.env (scripts); both are gitignored
+LLM_PROVIDER=groq
+GROQ_API_KEY=<your key>          # as a Worker secret when deployed: npx wrangler secret put GROQ_API_KEY
+```
+
+What is the same: budget reservation, the ledger, bounded retries, billing-uncertain handling, tiers, citation checks.
+What is different, on purpose and visibly:
+- **No signed receipts.** Cost is the response's token usage times the prices in `GROQ_MODEL_TIERS`, so it is an estimate (`cost_source: estimate`) and the receipt is shown as missing, never "verified". The verify screen, the exported receipt file and the cost-without-Prune figure do not apply.
+- **No server-side spending cap, step cap, idempotency or cache.** The local allowance is the only guard; set a spend limit in the Groq console too.
+- **Small rate limits.** The key tested had about 8,000 tokens per minute; a long document context can get a 413/429, reported as "rate limited".
+- **Prices are unverified.** Default models are `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` and `openai/gpt-oss-120b` (what the key listed); the prices are from memory. Set real ones in `GROQ_MODEL_TIERS`.
+
+`npm run check:caller` allows the Groq host in `src/llm-groq.ts` only.
+
 ## Web app
 
 ```bash

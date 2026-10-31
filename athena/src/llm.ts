@@ -1,12 +1,13 @@
-// THE ONLY MODEL CALLER. Nothing else in the repo may fetch a model host (scripts/check-single-caller.mjs
-// enforces this in CI). Every call goes to Prune's one base URL with the Prune key; provider keys live in
-// the Prune vault.
+// THE MODEL CALLER. Nothing but this file and its sibling src/llm-groq.ts may fetch a model host
+// (scripts/check-single-caller.mjs enforces this in CI). By default every call goes to Prune's one base URL with
+// the Prune key; provider keys live in the Prune vault. LLM_PROVIDER=groq hands the call to llm-groq.ts.
 import type { Env, Fetcher } from './env.ts';
 import { AppError, classifyHttp, classifyNetworkError } from './errors.ts';
 import type { ErrorCode } from './errors.ts';
 import { assertNotKilled } from './killswitch.ts';
 import { getBudget, releaseStatement, remainingMicro, reserve, settleStatement } from './budget.ts';
 import { parseCompletion } from './completion.ts';
+import { callGroq } from './llm-groq.ts';
 import { extractReceipt, verifyReceiptDetailed } from './receipts.ts';
 import type { VerifyStatus } from './receipts.ts';
 import { estimateMicro, loadTiers } from './tiers.ts';
@@ -96,6 +97,8 @@ function buildHeaders(env: Env, req: CallRequest, idem: string): Record<string, 
 }
 
 export async function callModel(env: Env, req: CallRequest, deps: LlmDeps = {}): Promise<CallResult> {
+  // The parallel workflow: same contract, a different provider. Selected per deployment, never per request.
+  if (env.LLM_PROVIDER === 'groq') return callGroq(env, req, deps);
   const db = env.DB;
   const doFetch = deps.fetch ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;

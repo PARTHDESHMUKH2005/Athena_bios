@@ -28,6 +28,12 @@ export interface Env {
   ABSTAIN_MIN_SCORE?: string;
   /** Smallest gap between the best and second-best bm25 strength. Unset or 0: ignored. */
   ABSTAIN_MIN_MARGIN?: string;
+  // A: the parallel Groq model path. 'prune' (default) or 'groq'. Groq has no signed receipts and no server-side cap.
+  LLM_PROVIDER?: string;
+  GROQ_API_KEY?: string;
+  GROQ_BASE_URL?: string;
+  /** JSON like MODEL_TIERS, for the Groq models and their prices. */
+  GROQ_MODEL_TIERS?: string;
 }
 
 /** Subset of ExecutionContext the orchestrator needs. */

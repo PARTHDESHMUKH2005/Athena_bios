@@ -72,3 +72,8 @@ Built from the "Verify" build prompt, additive to the existing engine. All new w
 ## 2026-10-31 (Phase 3 start): "why this model" explanations
 - `explainRouting` and `explainEscalation` in `src/tiers.ts` turn the rule that fired into one plain sentence (tier, reason, and a note when the allowance forced a cheaper tier). They are built from rules, never a model call. The activity timeline now shows them (`tier` and `escalate` steps); the orchestrator change is those two lines only. Tests: `tests/a-routing.test.ts`.
 - Not done: a field on the answer itself for Keha's UI (that is an API addition for Harshdeep), the economical-only vs stronger-only vs Athena evaluation (needs a working key), and `bench/cases/` evaluation cases.
+
+## 2026-10-31 (later): parallel Groq path
+- `athena/src/llm-groq.ts` is a second model door with the same contract as `llm.ts` (reserve, ledger, bounded retries, billing-uncertain, settle); `LLM_PROVIDER=groq` selects it, `llm.ts` hands over in two lines. Tiers in `tiers.ts` (`DEFAULT_GROQ_TIERS`, `GROQ_MODEL_TIERS`), env vars appended to `env.ts`. The single-caller guard now allows the Groq host in that one file. 14 tests in `tests/a-groq.test.ts` (fake fetch); one live call on each tier passed.
+- Differences to know: no signed receipts (cost is an estimate, receipt shown as missing), no Groq-side cap or idempotency or cache, and a small tokens-per-minute limit. Prices are from memory and unverified.
+- The Groq key was pasted into a chat: rotate it. It is only in the gitignored `athena/.env`.
