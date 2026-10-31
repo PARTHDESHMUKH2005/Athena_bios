@@ -52,8 +52,6 @@ Checklist from `memory.md` section 16, and how much the probe script covers:
 
 ## Notes for the team
 - Keep this checklist ticked as you go so everyone can see when Phase 0 is done.
-<<<<<<< HEAD
-=======
 
 ## 2026-10-31: Verify feature and companions (built on the mock, not run against real Prune)
 Built from the "Verify" build prompt, additive to the existing engine. All new work is in new files except small hooks listed under "Touched files". No Phase 0 call was made (no key in this session), so receipt format details remain **unverified**; see `docs/receipts.md`.
@@ -89,4 +87,10 @@ Built from the "Verify" build prompt, additive to the existing engine. All new w
 - Reproduced: a 40-page document with 8 back-to-back questions lost one answer to `rate_limited`. Cause: Groq's per-minute token limit is a sliding window and it asked for a 9 s wait, but `llm-groq.ts` capped its wait at 8 s, so every retry landed inside the same window.
 - Fix: honour `retry-after` in full (plus 250 ms), allow up to 25 s per wait and a 60 s deadline, and when the advised wait cannot fit, stop without sleeping and put `retryAfterSec` in the error detail. Re-run of the same session: 8/8 correct, no failures (49 s, because it waits instead of failing). Tests: `tests/a-groq.test.ts` (17).
 - Still not covered: browser UI on Groq, deployment, real prices.
->>>>>>> 79c00e344889ec6f0b7352edb33f4ae83f609917
+
+## 2026-10-31: Verify for answers without a receipt (Groq)
+- Problem: on Groq answers "Verify again" was disabled and the verify endpoint returned `receipt_missing`, so there was no way to check how a cost was calculated.
+- Fix: `src/costcheck.ts` recomputes the cost from the stored token counts and the tier price table (input and output lines, total rounded up to the next $0.000001) and compares it with what was charged. `GET /api/receipts/:id` returns `cost_check`; `POST /api/receipts/:id/verify` on a receipt-less call now rechecks the arithmetic instead of failing. The receipt panel shows "How this cost was calculated" with a working **Verify cost** button and a matches / does-not-match badge. On Prune calls the same card is shown as reference only, since the signed receipt sets the cost.
+- What it proves: the arithmetic and the inputs we used. It cannot prove what Groq billed, and the panel says so.
+- Checked in the browser on Groq: 2,102 × $0.075/1M + 59 × $0.3/1M = $0.000176, matching the cost charged. 3 new tests; 204 pass.
+- Also fixed: `tests/a-groq.test.ts` had the Groq host written out, which made `npm run check:caller` fail since the Groq commit.

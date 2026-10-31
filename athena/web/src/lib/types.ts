@@ -146,6 +146,25 @@ export interface AttemptsByAnswer {
   attempts: { call_id: string; rung: 'first' | 'escalation'; tier: string; model: string | null; status: string; cost_usd: number | null; verify_status: string }[];
 }
 
+/** How a call's cost was calculated, recomputed by the server (GET receipt and POST verify). */
+export interface CostCheck {
+  basis: 'receipt' | 'token_math';
+  provider: 'prune' | 'groq';
+  model: string | null;
+  price_model: string;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  in_per_m_usd: number;
+  out_per_m_usd: number;
+  input_cost_usd: number | null;
+  output_cost_usd: number | null;
+  computed_usd: number | null;
+  recorded_usd: number | null;
+  matches: boolean | null;
+  steps: string[];
+  note: string;
+}
+
 export interface VerifyResult {
   verify_status: 'verified' | 'failed' | 'unverified' | 'missing' | string;
   reason?: string | null;
@@ -153,10 +172,12 @@ export interface VerifyResult {
   verified_at?: number | null;
   override?: boolean;
   saved?: boolean;
+  cost_check?: CostCheck;
 }
 
 /** Extra fields on GET /api/receipts/:call_id. All optional so an older server still works. */
 export interface ReceiptExtras {
+  cost_check?: CostCheck;
   verify?: { status: string; reason: string | null; reason_text: string | null; verified_at: number | null };
   cost?: { actual_usd: number | null; without_prune_usd: number | null; naive_baseline_usd: number | null };
   baseline?: {

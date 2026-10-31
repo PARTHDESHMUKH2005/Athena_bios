@@ -19,13 +19,9 @@
     "dev:stack": "node tools/dev-server.mjs",
     "web": "npm --prefix web run dev",
     "web:build": "npm --prefix web run build",
-<<<<<<< HEAD
-    "check": "npm run typecheck && npm test && npm run check:caller && npm --prefix web run typecheck"
-=======
     "check": "npm run typecheck && npm test && npm run check:caller && npm --prefix web run typecheck",
     "gate:eval": "node bench/gate_eval/run.ts",
     "verify:py": "python3 bench/verify.py"
->>>>>>> 79c00e344889ec6f0b7352edb33f4ae83f609917
   },
   "dependencies": {
     "hono": "^4.13.0",

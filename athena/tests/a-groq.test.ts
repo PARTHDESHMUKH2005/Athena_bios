@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import { AppError } from '../src/errors.ts';
 import { callModel } from '../src/llm.ts';
 import type { CallRequest } from '../src/llm.ts';
+import { GROQ_BASE_URL } from '../src/llm-groq.ts';
 import { DEFAULT_GROQ_TIERS } from '../src/tiers.ts';
 import { makeEnv, makeWorkspace, noSleep, rowOf, rowsOf } from './helpers.ts';
 import type { Mock } from './helpers.ts';
@@ -74,7 +75,7 @@ describe('parallel Groq model path', () => {
     assert.equal(r.cacheHit, false);
     assert.equal(r.receiptRaw, '');
     assert.equal(seen.length, 1);
-    assert.equal(seen[0]!.url, 'https://api.groq.com/openai/v1/chat/completions');
+    assert.equal(seen[0]!.url, `${GROQ_BASE_URL}/chat/completions`);
     assert.equal(seen[0]!.headers['authorization'], 'Bearer gsk_test_key_not_real');
     assert.ok(!Object.keys(seen[0]!.headers).some((h) => h.startsWith('x-prune')), 'no Prune headers go to Groq');
     assert.equal(seen[0]!.body['model'], 'openai/gpt-oss-20b');
@@ -93,7 +94,7 @@ describe('parallel Groq model path', () => {
     const ws = await makeWorkspace(env);
     const { f, seen } = scripted(new Error('should not matter'));
     await assert.rejects(callModel(env, req(ws.id, 'k1'), { fetch: f, sleep: noSleep }));
-    assert.ok(seen.every((s) => !s.url.includes('groq.com')));
+    assert.ok(seen.every((s) => !s.url.startsWith(GROQ_BASE_URL)));
   });
 
   test('qwen (no reasoning_effort) and the strong tier use their own models', async () => {
@@ -253,5 +254,60 @@ describe('Groq usage accounting', () => {
     assert.ok(u.cpga.spend_usd > 0, 'spend must not read zero when money was spent');
     assert.equal(u.cpga.spend_estimated_usd, u.cpga.spend_usd);
     assert.equal(u.totals.receipts, 0);
+  });
+});
+
+describe('verifying a Groq answer: the cost arithmetic is rechecked', () => {
+  const setup = async () => {
+    const { createApp } = await import('../src/app.ts');
+    const env = await makeEnv(unusedPrune, { ...base, DOC_LIMIT_PER_MIN: '100', MSG_LIMIT_PER_MIN: '100' });
+    const app = createApp({ llm: { sleep: noSleep, fetch: scripted(ok()).f } });
+    const exec = { waitUntil: (p: Promise<unknown>) => void p.catch(() => undefined), passThroughOnException() {} };
+    const call = async (method: string, path: string, tok: string | null, body?: unknown) => {
+      const res = await app.request(path, { method, headers: { ...(tok ? { authorization: `Bearer ${tok}` } : {}), 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }, env, exec as never);
+      return { status: res.status, json: (await res.json().catch(() => null)) as any };
+    };
+    const tok = (await call('POST', '/api/session', null, {})).json.token;
+    const d = (await call('POST', '/api/documents', tok, { filename: 'a.pdf', size_bytes: 10, page_count: 1, pack: 'general' })).json.document_id;
+    await call('PUT', `/api/documents/${d}/file`, tok, undefined);
+    await call('POST', `/api/documents/${d}/pages`, tok, { pages: [{ page_no: 1, text: 'The invoice is due within fourteen days of receipt.' }] });
+    await call('POST', `/api/documents/${d}/finalize`, tok, { ocr: 'skip', auto_summary: false });
+    const chat = (await call('POST', '/api/chats', tok, { document_ids: [d] })).json.chat_id;
+    const r = await call('POST', `/api/chats/${chat}/messages`, tok, { client_msg_id: 'q1', content: 'When is the invoice due?', mode: 'answer', output: 'normal' });
+    return { env, call, tok, callId: r.json.usage.call_id as string };
+  };
+
+  test('the receipt view shows each step of the calculation and that it matches what was charged', async () => {
+    const x = await setup();
+    const cc = (await x.call('GET', `/api/receipts/${x.callId}`, x.tok)).json.cost_check;
+    assert.equal(cc.basis, 'token_math');
+    assert.equal(cc.provider, 'groq');
+    // The fake Groq reports 1000 prompt and 50 completion tokens; the price comes from whichever tier was routed to.
+    assert.deepEqual([cc.prompt_tokens, cc.completion_tokens], [1000, 50]);
+    const expected = Math.ceil(1000 * cc.in_per_m_usd + 50 * cc.out_per_m_usd) / 1e6;
+    assert.equal(cc.input_cost_usd, (1000 * cc.in_per_m_usd) / 1e6);
+    assert.equal(cc.computed_usd, expected);
+    assert.equal(cc.recorded_usd, expected);
+    assert.equal(cc.matches, true);
+    assert.ok(cc.steps.some((s: string) => s.includes('1,000 tokens')));
+    assert.ok(/cannot prove what Groq billed/.test(cc.note));
+  });
+
+  test('Verify on a Groq answer works: it rechecks the arithmetic instead of failing', async () => {
+    const x = await setup();
+    const v = await x.call('POST', `/api/receipts/${x.callId}/verify`, x.tok, {});
+    assert.equal(v.status, 200);
+    assert.equal(v.json.verify_status, 'missing');
+    assert.equal(v.json.cost_check.matches, true);
+    assert.equal(v.json.saved, false);
+  });
+
+  test('if the recorded cost is changed afterwards, the check says it no longer matches', async () => {
+    const x = await setup();
+    await x.env.DB.prepare('UPDATE llm_calls SET cost_micro = 99 WHERE id = ?').bind(x.callId).run();
+    const v = await x.call('POST', `/api/receipts/${x.callId}/verify`, x.tok, {});
+    assert.ok(v.json.cost_check.computed_usd > 0.000099);
+    assert.equal(v.json.cost_check.recorded_usd, 0.000099);
+    assert.equal(v.json.cost_check.matches, false);
   });
 });

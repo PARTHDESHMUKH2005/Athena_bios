@@ -300,14 +300,26 @@ function Types() {
 
 function Statement() {
   return (
-    <section className="pad" style={{ paddingTop: 0 }}>
+    <section className="statement-sec">
       <div className="wrap">
-        <hr className="rule" style={{ marginBottom: 56 }} />
-        <p className="statement">Athena reads a document once,<span className="r">sends only what matters, and shows the bill.</span></p>
+        <div style={{ marginBottom: 32 }}><Tag>Principles</Tag><Tag>Transparency</Tag></div>
+        <h2 className="statement">
+          Athena reads a document once,
+          <span className="r">sends only what matters, and shows the bill.</span>
+        </h2>
         <div className="cols3">
-          <div><b>It costs less per question</b><p>Index once, then send only the sections that match. Follow-ups use a short memory window, not the whole chat.</p></div>
-          <div><b>You see the price first</b><p>Every answer shows its model, its cost and a receipt. The allowance is checked before anything is sent.</p></div>
-          <div><b>Failures stay small</b><p>Limited retries, no blind retry when billing is uncertain, and finished work stays saved.</p></div>
+          <div className="cols3__card">
+            <b>It costs less per question</b>
+            <p>Index once, then send only the sections that match. Follow-ups use a short memory window, not the whole chat.</p>
+          </div>
+          <div className="cols3__card">
+            <b>You see the price first</b>
+            <p>Every answer shows its model, its cost and a receipt. The allowance is checked before anything is sent.</p>
+          </div>
+          <div className="cols3__card">
+            <b>Failures stay small</b>
+            <p>Limited retries, no blind retry when billing is uncertain, and finished work stays saved.</p>
+          </div>
         </div>
       </div>
     </section>
