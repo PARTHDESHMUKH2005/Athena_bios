@@ -1,0 +1,32 @@
+{
+  "name": "athena",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Athena backend: document Q&A on Cloudflare Workers + D1 + R2, every model call through Prune.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "mock": "node tools/mock-prune/server.mjs",
+    "check:caller": "node scripts/check-single-caller.mjs",
+    "dev": "wrangler dev --local",
+    "phase0": "node --env-file-if-exists=.env scripts/phase0.mjs",
+    "bench": "node --env-file-if-exists=.env bench/run.mjs",
+    "bench:injection": "node --env-file-if-exists=.env bench/injection.mjs",
+    "dev:stack": "node tools/dev-server.mjs",
+    "web": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build"
+  },
+  "dependencies": {
+    "hono": "^4.13.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251001.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

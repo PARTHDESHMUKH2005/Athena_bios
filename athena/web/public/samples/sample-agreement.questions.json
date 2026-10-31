@@ -1,0 +1,42 @@
+[
+  {
+    "q": "Within how many days must the customer pay each invoice?",
+    "answer": "45 days",
+    "page": 5
+  },
+  {
+    "q": "How many days of written notice are required to terminate the agreement?",
+    "answer": "90 days",
+    "page": 3
+  },
+  {
+    "q": "Which jurisdiction governs this agreement?",
+    "answer": "Ontario",
+    "page": 2
+  },
+  {
+    "q": "What penalty percentage applies for each day of late delivery?",
+    "answer": "2%",
+    "page": 1
+  },
+  {
+    "q": "Within how many hours must support respond to a critical request?",
+    "answer": "4 hours",
+    "page": 6
+  },
+  {
+    "q": "What is the cap on the supplier's total liability, in dollars?",
+    "answer": "100000",
+    "page": 2
+  },
+  {
+    "q": "How many days of notice must be given before an audit?",
+    "answer": "15 days",
+    "page": 1
+  },
+  {
+    "q": "What is the minimum order quantity in units?",
+    "answer": "50 units",
+    "page": 1
+  }
+]

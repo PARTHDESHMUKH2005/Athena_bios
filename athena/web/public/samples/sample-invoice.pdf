@@ -1,0 +1,53 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 480 >>
+stream
+BT
+/F1 10 Tf
+13 TL
+54 740 Td
+(INVOICE INV-1) Tj T*
+(Acme Ltd) Tj T*
+(12 Example Street, Springfield) Tj T*
+() Tj T*
+(Invoice date: 2026-01-01) Tj T*
+(Due date: 2026-01-31) Tj T*
+(Currency: USD) Tj T*
+() Tj T*
+(Description Quantity Unit price Amount) Tj T*
+(Widget 2 50 100) Tj T*
+() Tj T*
+(Subtotal 100) Tj T*
+(Tax 10) Tj T*
+(Total 110) Tj T*
+() Tj T*
+(Payment is due within 30 days of the invoice date. This is a synthetic sample invoice) Tj T*
+(for demonstration only.) Tj T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000772 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+842
+%%EOF

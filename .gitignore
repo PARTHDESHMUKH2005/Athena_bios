@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.dev.vars
+.wrangler/
+*.log
+phase0-findings.json
+.claude/

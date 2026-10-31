@@ -1,0 +1,29 @@
+{
+  // Fallback config. The team standard is the `cf` CLI: run `cf migrate` to turn this into
+  // cloudflare.config.ts (see the user CLAUDE.md). Secrets are NOT here:
+  //   PRUNE_API_KEY, ADMIN_TOKEN  -> set as Worker secrets
+  "name": "athena",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "athena",
+      "database_id": "REPLACE_AFTER_CREATING_THE_DATABASE",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "athena-files" }],
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "vars": {
+    "PRUNE_BASE_URL": "https://api.withprune.com/v1",
+    "PRUNE_AUTH": "bearer",
+    "KILL_SWITCH": "0",
+    "DEFAULT_BUDGET_USD": "0.25",
+    "PER_CALL_CAP_USD": "0.05",
+    "MAX_WORKSPACE_BUDGET_USD": "1.00",
+    "SESSION_LIMIT_PER_HOUR": "5",
+    "RETENTION_DAYS": "30"
+  },
+  "observability": { "enabled": true }
+}

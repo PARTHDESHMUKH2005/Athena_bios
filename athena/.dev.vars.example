@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local `wrangler dev`. The only model credential is the Prune key.
+PRUNE_API_KEY=
+ADMIN_TOKEN=
+# Point at the local mock (npm run mock) while developing:
+PRUNE_BASE_URL=http://127.0.0.1:8788/v1

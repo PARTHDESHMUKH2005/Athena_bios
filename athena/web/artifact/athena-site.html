@@ -1,0 +1,873 @@
+<title>Athena</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600&display=swap">
+<style>
+/* Layout concept: an editorial product site (hairline grids, huge light headings, one black section) with a
+   working demo workspace in the middle. Palette: paper white and ink, one orange used only for primary actions
+   and warnings; terrain art is generated on canvas. */
+:root {
+  --bg: #ffffff; --fg: #0b0b0b; --muted: #6a6a66; --line: #d9d9d4; --panel: #f4f4f1;
+  --btn-bg: #0b0b0b; --btn-fg: #ffffff;
+  --inv-bg: #000000; --inv-fg: #ffffff; --inv-muted: #a8a8a2; --inv-line: #3a3a37;
+  --accent: #f26b3a; --accent-fg: #ffffff;
+  --ok: #1d7a4b; --ok-bg: #e4f3ea; --warn: #8f5600; --warn-bg: #fff0cf; --bad: #b3261e; --bad-bg: #fde8e6;
+  --c-blue: #2a7de1; --c-purple: #7a4fe0; --c-green: #12a37f; --c-amber: #e08a00; --c-sky: #3fa7e8;
+  --card: #ffffff; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 14px rgba(0,0,0,.06);
+  --font: "Hanken Grotesk", "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --maxw: 1260px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c0c0b; --fg: #f1f1ed; --muted: #9b9b94; --line: #2b2b28; --panel: #151513;
+    --btn-bg: #f1f1ed; --btn-fg: #0c0c0b; --inv-bg: #050505; --card: #1a1a18; --shadow: 0 1px 2px rgba(0,0,0,.4);
+    --ok: #5fd08f; --ok-bg: #12261b; --warn: #f0b24a; --warn-bg: #2b2111; --bad: #ff8a80; --bad-bg: #2d1613;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c0c0b; --fg: #f1f1ed; --muted: #9b9b94; --line: #2b2b28; --panel: #151513;
+  --btn-bg: #f1f1ed; --btn-fg: #0c0c0b; --inv-bg: #050505; --card: #1a1a18; --shadow: 0 1px 2px rgba(0,0,0,.4);
+  --ok: #5fd08f; --ok-bg: #12261b; --warn: #f0b24a; --warn-bg: #2b2111; --bad: #ff8a80; --bad-bg: #2d1613;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: var(--bg); }
+a { color: inherit; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: var(--maxw); margin: 0 auto; padding-left: max(clamp(16px, 4vw, 48px), env(safe-area-inset-left, 0px)); padding-right: max(clamp(16px, 4vw, 48px), env(safe-area-inset-right, 0px)); }
+.label { font-size: 11px; letter-spacing: .13em; text-transform: uppercase; font-weight: 500; }
+.muted { color: var(--muted); }
+h1, h2, h3, p { margin: 0; }
+h1, h2 { font-weight: 300; letter-spacing: -.035em; line-height: 1.02; text-wrap: balance; }
+.h-xl { font-size: clamp(42px, 7vw, 104px); }
+.h-lg { font-size: clamp(34px, 5vw, 72px); }
+.h-md { font-size: clamp(26px, 3vw, 40px); letter-spacing: -.025em; line-height: 1.1; }
+.tag { display: inline-block; border: 1px solid var(--line); padding: 9px 14px; margin-right: 6px; font-size: 11px; letter-spacing: .13em; text-transform: uppercase; font-weight: 500; }
+.btn { display: inline-flex; align-items: center; gap: 12px; background: var(--btn-bg); color: var(--btn-fg); border: 1px solid var(--btn-bg); padding: 14px 20px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; text-decoration: none; }
+.btn:hover { opacity: .88; }
+.btn--ghost { background: transparent; color: var(--fg); border-color: var(--fg); }
+.btn--accent { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); letter-spacing: .02em; text-transform: none; font-size: 15px; font-weight: 500; padding: 13px 18px; justify-content: center; }
+.btn--sm { padding: 10px 14px; font-size: 11px; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.chev { width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-top: 1.5px solid currentColor; transform: rotate(45deg); }
+
+/* ---------- nav ---------- */
+.nav { position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0; z-index: 50; color: #fff; transition: background .25s, color .25s; }
+.nav.solid { background: var(--bg); color: var(--fg); border-bottom: 1px solid var(--line); }
+.nav__in { display: flex; align-items: center; gap: 28px; height: 68px; }
+.logo { display: inline-flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 400; letter-spacing: -.03em; text-decoration: none; }
+.logo svg { width: 24px; height: 24px; }
+.nav__links { display: flex; gap: 6px; margin-left: 40px; flex: 1; }
+.nav__link { background: none; border: 0; padding: 8px 14px; font-size: 14px; color: inherit; text-decoration: none; }
+.nav__cta { display: flex; gap: 8px; }
+.nav .btn--ghost { color: inherit; border-color: currentColor; }
+.nav:not(.solid) .btn:not(.btn--ghost) { background: #fff; color: #000; border-color: #fff; }
+.mega { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 40; background: rgba(18,10,10,.62); backdrop-filter: blur(26px); -webkit-backdrop-filter: blur(26px); color: #fff; padding-top: calc(68px + env(safe-area-inset-top, 0px)); overflow-y: auto; }
+.mega__in { display: grid; grid-template-columns: 1.1fr 1fr 1fr 1.2fr; gap: 32px; padding-block: 48px; }
+.mega .label { opacity: .7; margin-bottom: 18px; display: block; }
+.mega__big { display: block; width: 100%; text-align: left; background: none; border: 0; color: #fff; font-size: 30px; font-weight: 300; letter-spacing: -.02em; padding: 5px 0; opacity: .6; text-decoration: none; }
+.mega__big:hover, .mega__big.on { opacity: 1; }
+.mega__sub a { display: block; color: #fff; text-decoration: none; opacity: .75; padding: 4px 0; font-size: 15px; }
+.mega__sub a:hover { opacity: 1; }
+.mega__blurb { font-size: 17px; line-height: 1.45; opacity: .9; max-width: 36ch; }
+.mega__spot { border: 1px solid rgba(255,255,255,.25); padding: 16px; font-size: 14px; max-width: 300px; }
+@media (max-width: 900px) { .nav__links { display: none; } .nav__cta .btn--ghost { display: none; } .mega__in { grid-template-columns: 1fr; } .nav__in { justify-content: space-between; } }
+
+/* ---------- hero ---------- */
+.hero { position: relative; min-height: min(86vh, 760px); color: #fff; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; background: #3a1a1c; }
+.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hero__shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,4,4,.35) 0%, rgba(10,4,4,0) 30%, rgba(10,4,4,.55) 100%); }
+.hero__in { position: relative; padding-block: 0 44px; }
+.hero__row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: end; border-bottom: 1px solid rgba(255,255,255,.7); padding-bottom: 22px; }
+.hero__tag { font-size: clamp(22px, 2.4vw, 32px); font-weight: 300; letter-spacing: -.02em; max-width: 24ch; line-height: 1.15; }
+.rotor { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; font-size: clamp(22px, 2.4vw, 32px); font-weight: 300; letter-spacing: -.02em; }
+.rotor li { opacity: .35; transition: opacity .5s; }
+.rotor li.on { opacity: 1; }
+.rotor a { text-decoration: none; display: inline-flex; gap: 14px; align-items: baseline; }
+.hero__small { margin-top: 20px; font-size: 13px; opacity: .85; }
+@media (max-width: 800px) { .hero__row { grid-template-columns: 1fr; } }
+
+/* ---------- sections ---------- */
+section { position: relative; }
+.pad { padding-block: clamp(64px, 9vw, 140px); }
+.grid-cells { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.cell { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 28px 24px; min-height: 160px; position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; }
+.cell::before, .cell::after { content: "+"; position: absolute; font-size: 14px; line-height: 1; color: var(--muted); }
+.cell::before { right: -5px; bottom: -8px; background: var(--bg); }
+.cell h3 { font-size: 28px; font-weight: 300; letter-spacing: -.025em; }
+.cell p { font-size: 15px; color: var(--muted); max-width: 34ch; }
+.chip { display: inline-block; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; padding: 4px 8px; border: 1px solid var(--line); color: var(--muted); }
+.chip--live { color: var(--ok); border-color: var(--ok); }
+@media (max-width: 800px) { .grid-cells { grid-template-columns: 1fr; } }
+.statement { font-size: clamp(36px, 6.2vw, 92px); font-weight: 300; letter-spacing: -.04em; line-height: 1.02; }
+.statement .r { display: block; text-align: right; }
+.rule { border: 0; border-top: 1px solid var(--fg); margin: 0; }
+.cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; padding-top: 28px; }
+.cols3 b { display: block; font-size: 22px; font-weight: 500; letter-spacing: -.02em; margin-bottom: 14px; }
+.cols3 p { font-size: 14px; color: var(--muted); }
+@media (max-width: 800px) { .cols3 { grid-template-columns: 1fr; } }
+
+/* orbit (black section) */
+.inv { background: var(--inv-bg); color: var(--inv-fg); }
+.inv .muted { color: var(--inv-muted); }
+.orbit { display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: center; }
+.orbit__svg { width: 100%; max-width: 560px; margin: 0 auto; display: block; }
+.orbit__lbl { font-size: 11px; letter-spacing: .13em; text-transform: uppercase; font-weight: 600; fill: var(--inv-fg); }
+.orbit__node { cursor: pointer; }
+.orbit__text { border-top: 1px solid var(--inv-line); padding-top: 24px; margin-top: 40px; min-height: 150px; }
+.orbit__text h4 { margin: 0 0 12px; font-size: 18px; font-weight: 500; }
+.orbit__text p { color: var(--inv-muted); font-size: 15px; max-width: 46ch; }
+@media (max-width: 900px) { .orbit { grid-template-columns: 1fr; gap: 24px; } }
+
+/* timeline cards */
+.panel { background: var(--panel); position: relative; padding: clamp(28px, 5vw, 64px) 16px; display: flex; justify-content: center; }
+.panel::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.steps { position: relative; display: flex; flex-direction: column; gap: 14px; width: min(320px, 100%); }
+.step { background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 10px 12px 12px; font-size: 13px; }
+.step__top { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 500; }
+.step__ic { width: 18px; height: 18px; display: grid; place-items: center; color: #fff; font-size: 11px; font-weight: 700; }
+.step__done { margin-left: auto; font-size: 11px; background: var(--ok-bg); color: var(--ok); padding: 2px 8px; font-weight: 500; }
+.step__live { margin-left: auto; font-size: 11px; background: var(--warn-bg); color: var(--warn); padding: 2px 8px; font-weight: 500; }
+.step__sub { border-top: 1px solid var(--line); margin-top: 9px; padding-top: 8px; color: var(--muted); }
+.step.off { opacity: .25; transform: translateY(6px); }
+.step { transition: opacity .35s, transform .35s; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; }
+.two p { font-size: 17px; max-width: 46ch; }
+@media (max-width: 800px) { .two { grid-template-columns: 1fr; gap: 24px; } }
+
+/* ---------- demo workspace ---------- */
+.ws { border: 1px solid var(--fg); display: grid; grid-template-columns: 260px minmax(0, 1fr) 330px; min-height: 640px; background: var(--bg); }
+.ws__side { border-right: 1px solid var(--line); padding: 18px; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.ws__main { display: flex; flex-direction: column; min-width: 0; }
+.ws__drawer { border-left: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; }
+.ws__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.doc { border: 1px solid var(--line); padding: 10px 12px; font-size: 14px; display: grid; gap: 4px; }
+.doc small { color: var(--muted); font-size: 12px; }
+.meter { height: 6px; background: var(--panel); border: 1px solid var(--line); position: relative; overflow: hidden; }
+.meter i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--fg); }
+.meter b { position: absolute; top: 0; bottom: 0; background: var(--accent); opacity: .7; }
+.field { display: grid; gap: 6px; font-size: 12px; }
+.field input, .field select { border: 1px solid var(--line); background: var(--bg); padding: 9px 10px; font-size: 14px; width: 100%; min-width: 0; }
+.chat { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 20px; max-height: 520px; min-height: 360px; }
+.q { align-self: flex-end; max-width: 80%; border: 1px solid var(--fg); padding: 10px 14px; font-size: 15px; }
+.a { border-left: 1px solid var(--fg); padding-left: 16px; display: grid; gap: 12px; max-width: 92%; }
+.a__text { font-size: 16px; line-height: 1.5; }
+.cite { display: inline-block; border: 1px solid var(--fg); background: transparent; padding: 0 6px; font-size: 12px; font-weight: 600; margin: 0 2px; line-height: 1.5; }
+.cite:hover { background: var(--fg); color: var(--bg); }
+.foot { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12px; color: var(--muted); }
+.badge { font-size: 11px; font-weight: 600; letter-spacing: .04em; padding: 2px 8px; }
+.badge--sim { background: var(--warn-bg); color: var(--warn); }
+.badge--ok { background: var(--ok-bg); color: var(--ok); }
+.badge--bad { background: var(--bad-bg); color: var(--bad); }
+.linkbtn { background: none; border: 0; padding: 0; text-decoration: underline; font-size: 12px; color: var(--fg); }
+.card { border: 1px solid var(--line); padding: 14px; display: grid; gap: 10px; font-size: 14px; }
+.card--warn { border-color: var(--accent); }
+.card h4 { margin: 0; font-size: 15px; font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.composer { border-top: 1px solid var(--line); padding: 14px 18px; display: grid; gap: 10px; }
+.composer__row { display: flex; gap: 8px; }
+.composer__row input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--fg); padding: 12px 14px; background: var(--bg); font-size: 15px; }
+.sugg { display: flex; flex-wrap: wrap; gap: 6px; }
+.sugg button { border: 1px solid var(--line); background: none; padding: 6px 10px; font-size: 13px; }
+.sugg button:hover { border-color: var(--fg); }
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tabs button { flex: 1; background: none; border: 0; border-bottom: 2px solid transparent; padding: 12px 6px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; color: var(--muted); }
+.tabs button[aria-selected=true] { color: var(--fg); border-bottom-color: var(--fg); }
+.pane { padding: 16px; overflow-y: auto; max-height: 560px; font-size: 14px; display: grid; gap: 12px; align-content: start; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; background: var(--panel); padding: 12px; border: 1px solid var(--line); }
+mark { background: var(--warn-bg); color: inherit; padding: 0 2px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.bars { display: grid; gap: 6px; }
+.bar { display: grid; grid-template-columns: 70px 1fr 70px; gap: 8px; align-items: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.bar i { display: block; height: 10px; background: var(--fg); min-width: 2px; }
+.bar i.acc { background: var(--accent); }
+.drill { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.drill select { border: 1px solid var(--line); background: var(--bg); padding: 6px 8px; font-size: 12px; }
+@media (max-width: 1000px) { .ws { grid-template-columns: 1fr; } .ws__side, .ws__drawer { border: 0; border-bottom: 1px solid var(--line); } .chat { max-height: 420px; } }
+
+/* proof / safety / faq / start / footer */
+.bigbars { display: grid; gap: 14px; margin-top: 28px; }
+.bigbar { display: grid; grid-template-columns: 210px 1fr 90px; gap: 14px; align-items: center; font-size: 14px; font-variant-numeric: tabular-nums; }
+.bigbar i { display: block; height: 22px; background: var(--fg); }
+.bigbar.a i { background: var(--accent); }
+@media (max-width: 700px) { .bigbar { grid-template-columns: 1fr; gap: 4px; } }
+.limits { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
+.limits li { border-bottom: 1px solid var(--line); padding: 14px 0; font-size: 15px; display: flex; gap: 16px; }
+.limits li span:first-child { width: 150px; flex: none; }
+.faq { border-top: 1px solid var(--fg); }
+.faq details { border-bottom: 1px solid var(--line); padding: 20px 0; }
+.faq summary { cursor: pointer; font-size: 22px; font-weight: 300; letter-spacing: -.02em; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+.faq summary::after { content: "+"; font-size: 24px; }
+.faq details[open] summary::after { content: "−"; }
+.faq p { padding-top: 14px; color: var(--muted); max-width: 70ch; font-size: 16px; }
+.start { display: grid; grid-template-columns: 1fr 1fr; min-height: 560px; border: 1px solid var(--fg); }
+.start__form { padding: clamp(24px, 5vw, 72px); display: flex; flex-direction: column; justify-content: center; gap: 20px; }
+.start__art { position: relative; min-height: 280px; }
+.start__art canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+@media (max-width: 800px) { .start { grid-template-columns: 1fr; } }
+footer { border-top: 1px solid var(--line); }
+.foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; padding-block: 56px; }
+.foot-grid a { display: block; text-decoration: none; padding: 5px 0; font-size: 15px; }
+.foot-grid .label { color: var(--muted); display: block; margin-bottom: 16px; }
+@media (max-width: 800px) { .foot-grid { grid-template-columns: 1fr 1fr; } }
+.themebtn { position: fixed; right: max(14px, env(safe-area-inset-right, 0px)); bottom: max(14px, env(safe-area-inset-bottom, 0px)); z-index: 55; border: 1px solid var(--fg); background: var(--bg); width: 40px; height: 40px; font-size: 16px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .step, .rotor li, .nav { transition: none; } }
+</style>
+
+<header class="nav" id="nav">
+  <div class="wrap nav__in">
+    <a class="logo" href="#top" aria-label="Athena home"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 25 L16 6 L27 25 M10 19 H22" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>Athena</a>
+    <nav class="nav__links" aria-label="Main">
+      <button class="nav__link" data-mega="platform" aria-expanded="false">Platform +</button>
+      <button class="nav__link" data-mega="cases" aria-expanded="false">Use cases +</button>
+      <a class="nav__link" href="#how">How it works</a>
+      <a class="nav__link" href="#proof">Proof</a>
+      <a class="nav__link" href="#faq">FAQ</a>
+    </nav>
+    <div class="nav__cta">
+      <a class="btn btn--ghost btn--sm" href="#demo">Open workspace</a>
+      <a class="btn btn--sm" href="#start">Try Athena <span class="chev"></span></a>
+    </div>
+  </div>
+</header>
+<div class="mega" id="mega" hidden>
+  <div class="wrap mega__in">
+    <div><span class="label" id="megaLabel">Platform</span><div id="megaBig"></div></div>
+    <div><span class="label">Handles</span><div class="mega__sub" id="megaSub"></div></div>
+    <div><span class="label">Spotlight</span><div class="mega__spot" id="megaSpot"></div></div>
+    <div class="mega__blurb" id="megaBlurb"></div>
+  </div>
+</div>
+
+<main id="top">
+  <section class="hero" aria-label="Introduction">
+    <canvas id="terrain" aria-hidden="true"></canvas>
+    <div class="hero__shade"></div>
+    <div class="wrap hero__in">
+      <div class="hero__row">
+        <p class="hero__tag">Ask any document anything. See exactly what each answer cost.</p>
+        <ul class="rotor" id="rotor" aria-label="Document types">
+          <li>Policies</li><li>Reports</li><li>Invoices</li>
+          <li class="on"><a href="#demo">Athena for Contracts <span aria-hidden="true">↗</span></a></li>
+        </ul>
+      </div>
+      <p class="hero__small">A new generation of document answers</p>
+    </div>
+  </section>
+
+  <section class="pad" id="types">
+    <div class="wrap">
+      <div style="margin-bottom:40px"><span class="tag">Documents</span><span class="tag">Use cases</span></div>
+      <h2 class="h-lg" style="margin-bottom:56px;max-width:16ch">Text people already have to read.</h2>
+      <div class="grid-cells">
+        <div class="cell"><div><h3>Contracts</h3><p>Payment terms, notice periods, liability caps, with the page each one came from.</p></div><span class="chip chip--live">Live</span></div>
+        <div class="cell"><div><h3>Invoices</h3><p>Vendor, dates, line items and total, with a code check that the items add up.</p></div><span class="chip chip--live">Live</span></div>
+        <div class="cell"><div><h3>Reports and policies</h3><p>Ask about section 4, summarize it, find the clause that applies.</p></div><span class="chip chip--live">Live</span></div>
+        <div class="cell"><div><h3>Support tickets</h3><p>Topic, urgency, a draft reply for a human to send.</p></div><span class="chip">Planned</span></div>
+        <div class="cell"><div><h3>App reviews</h3><p>Sort a pile of reviews into bugs, requests, praise and complaints.</p></div><span class="chip">Planned</span></div>
+        <div class="cell"><div><h3>Scanned pages</h3><p>Reading pages that are pictures of text. Flagged today, not yet read.</p></div><span class="chip">Planned</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pad" style="padding-top:0">
+    <div class="wrap">
+      <hr class="rule" style="margin-bottom:56px">
+      <p class="statement">Athena reads a document once,<span class="r">sends only what matters, and shows the bill.</span></p>
+      <div class="cols3">
+        <div><b>It costs less per question</b><p>Index once, then send only the sections that match. Follow-ups use a short memory window, not the whole chat.</p></div>
+        <div><b>You see the price first</b><p>Every answer shows its model, its cost and a receipt. The allowance is checked before anything is sent.</p></div>
+        <div><b>Failures stay small</b><p>Limited retries, no blind retry when billing is uncertain, and finished work stays saved.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="inv pad" id="how" aria-label="How it works">
+    <div class="wrap orbit">
+      <svg class="orbit__svg" viewBox="0 0 560 520" role="img" aria-label="The seven steps behind every answer" id="orbit"></svg>
+      <div>
+        <h2 class="h-lg" style="font-size:clamp(30px,3.6vw,48px)">One answer, seven checks.</h2>
+        <p class="muted" style="margin-top:20px;max-width:44ch">Every question goes through the same path, so the cost, the model and the proof are always there.</p>
+        <div class="orbit__text" id="orbitText" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pad" id="activity">
+    <div class="wrap">
+      <div style="margin-bottom:32px"><span class="tag">Features</span><span class="tag">Activity</span></div>
+      <h2 class="h-xl" style="margin-bottom:56px">Every answer shows its work</h2>
+      <div class="panel" aria-label="Example activity timeline"><div class="steps" id="demoSteps"></div></div>
+      <div class="two" style="margin-top:72px">
+        <div><span class="label muted">Activity</span><h3 class="h-md" style="margin-top:28px">Watch the steps, not a spinner</h3><p style="margin-top:28px">While a question runs, Athena lists what it is doing: which sections it found, which model it chose, how much it reserved, and whether the receipt checked out. When it is done, the same list stays with the answer.</p></div>
+        <div><span class="label muted">Why it matters</span><h3 class="h-md" style="margin-top:28px">Trust you can inspect</h3><p style="margin-top:28px">Each step records what was decided and why, without storing your document text in the log. If something fails, the list ends where it stopped and says what is safe.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pad" id="demo" style="padding-top:0">
+    <div class="wrap">
+      <div style="margin-bottom:28px"><span class="tag">Try it</span><span class="tag">Sample contract</span></div>
+      <h2 class="h-lg" style="margin-bottom:20px;max-width:18ch">Ask the sample contract.</h2>
+      <p class="muted" style="max-width:62ch;margin-bottom:36px">This workspace runs in your browser on a synthetic six-page agreement. It really searches the text and counts tokens, but no AI model is called, prices are placeholders, and receipts are simulated and unsigned. The real app uses Prune and signs every receipt.</p>
+      <div class="ws" id="ws">
+        <aside class="ws__side" aria-label="Workspace">
+          <div>
+            <span class="label muted">Document</span>
+            <div class="doc" style="margin-top:10px"><b>agreement-1.pdf</b><small>6 pages · synthetic · ready</small><small id="docStats"></small></div>
+          </div>
+          <div>
+            <span class="label muted">Spending limit</span>
+            <div class="meter" style="margin-top:12px"><i id="mSpent"></i><b id="mRes"></b></div>
+            <div class="foot" style="margin-top:8px"><span id="mText"></span></div>
+            <label class="field" style="margin-top:12px">Limit (USD)<input id="limit" type="number" min="0" max="1" step="0.0001" value="0.0050" inputmode="decimal"></label>
+            <p class="muted" style="font-size:12px;margin-top:8px">Try a tiny limit like 0.0001 to see what happens when an answer does not fit.</p>
+          </div>
+          <div>
+            <span class="label muted">Failure drill</span>
+            <label class="field" style="margin-top:10px">Next question<select id="drill">
+              <option value="none">No failure</option>
+              <option value="outage">Service outage</option>
+              <option value="drop">Connection lost after sending</option>
+              <option value="cap">Prune spend cap reached</option>
+            </select></label>
+          </div>
+          <div class="foot" style="margin-top:auto"><button class="linkbtn" id="reset">Reset demo</button></div>
+        </aside>
+        <div class="ws__main">
+          <div class="ws__head"><div><b>agreement-1.pdf</b> <span class="muted" style="font-size:13px">· 1 document</span></div><button class="btn btn--ghost btn--sm" id="dlSummary">Download summary</button></div>
+          <div class="chat" id="chat" role="log" aria-live="polite"></div>
+          <form class="composer" id="form">
+            <div class="sugg" id="sugg"></div>
+            <div class="composer__row"><input type="text" id="qin" placeholder="Ask about your document…" autocomplete="off" aria-label="Question"><button class="btn" id="send" type="submit">Send <span class="chev"></span></button></div>
+            <label class="foot"><input type="checkbox" id="short"> Shorter answer (cheaper)</label>
+          </form>
+        </div>
+        <aside class="ws__drawer" aria-label="Details">
+          <div class="tabs" role="tablist"><button role="tab" id="t-act" aria-selected="true" data-tab="act">Activity</button><button role="tab" id="t-rec" aria-selected="false" data-tab="rec">Receipt</button><button role="tab" id="t-page" aria-selected="false" data-tab="page">Page</button><button role="tab" id="t-use" aria-selected="false" data-tab="use">Usage</button></div>
+          <div class="pane" id="pane"></div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="pad" id="proof" style="padding-top:0">
+    <div class="wrap">
+      <div style="margin-bottom:28px"><span class="tag">Proof</span></div>
+      <h2 class="h-lg" style="max-width:20ch">What is measured, and what is not yet.</h2>
+      <div class="two" style="margin-top:56px;gap:72px">
+        <div>
+          <h3 class="h-md">Prompt size per question</h3>
+          <p class="muted" style="margin-top:14px;font-size:15px">Average tokens actually sent on a seeded synthetic benchmark (2 agreements, 30 pages each, 20 questions), measured from the prompts that went out.</p>
+          <div class="bigbars" id="bigbars"></div>
+          <p class="muted" style="margin-top:20px;font-size:14px">Against apps that also retrieve a few sections, prompt size is similar. The difference there is model choice, caching and budget control, which the real benchmark measures. Cost per answer is not shown here because it has not been run against the live service yet.</p>
+        </div>
+        <div>
+          <h3 class="h-md">Check the receipts yourself</h3>
+          <p class="muted" style="margin-top:14px;font-size:15px">Every real answer carries a receipt signed by Prune. Export them all and verify with one command.</p>
+          <div class="mono" style="margin-top:20px">$ node scripts/verify-receipts.mjs receipts.jsonl
+
+receipts checked : 18
+signature valid  : 18
+total from receipts vs recorded: match
+ALL RECEIPTS VERIFIED</div>
+          <p class="muted" style="margin-top:14px;font-size:13px">Example output format from the project's verifier. It catches an edited cost, an edited receipt and a wrong key.</p>
+        </div>
+      </div>
+      <div style="margin-top:72px">
+        <span class="label muted">Limits, stated plainly</span>
+        <ul class="limits" style="margin-top:18px">
+          <li><span class="label">Text PDFs</span><span>Scanned pages are flagged, not read yet.</span></li>
+          <li><span class="label">Summaries</span><span>A summary can lose detail, so follow-ups also pull the earlier messages that matter.</span></li>
+          <li><span class="label">Search</span><span>Keyword search can miss a paraphrased question. That is the price of zero retrieval cost.</span></li>
+          <li><span class="label">Injection</span><span>Documents are treated as data and answers are scanned. We aim for harmless, not for magic.</span></li>
+          <li><span class="label">Results</span><span>Accuracy and cost numbers appear only after the real benchmark runs.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="pad" style="padding-top:0">
+    <div class="wrap">
+      <div style="margin-bottom:28px"><span class="tag">Safety</span></div>
+      <h2 class="h-lg" style="margin-bottom:48px;max-width:16ch">Safe when things go wrong.</h2>
+      <div class="grid-cells">
+        <div class="cell"><div><h3>Fenced documents</h3><p>Text from a file is data, never instructions. It cannot close its own fence.</p></div></div>
+        <div class="cell"><div><h3>Answers are scanned</h3><p>Secrets, links the document never contained and risky commands are removed.</p></div></div>
+        <div class="cell"><div><h3>Two budget layers</h3><p>Athena reserves before the call. Prune enforces the same cap on its side.</p></div></div>
+        <div class="cell"><div><h3>Retries that stop</h3><p>Spend caps, bad keys and uncertain billing are never retried blindly.</p></div></div>
+        <div class="cell"><div><h3>No keys in code</h3><p>Provider keys live in the Prune vault. The app holds one Prune key.</p></div></div>
+        <div class="cell"><div><h3>Signed receipts</h3><p>Cost comes from the receipt. Verify it offline, without trusting us.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pad" id="faq" style="padding-top:0">
+    <div class="wrap">
+      <div style="margin-bottom:28px"><span class="tag">FAQ</span></div>
+      <h2 class="h-lg" style="margin-bottom:48px">Questions people ask.</h2>
+      <div class="faq">
+        <details><summary>Why not just use ChatGPT or Claude with a PDF?</summary><p>Those do not show the cost of each answer, do not check a budget before the call, and give no signed receipt. Athena is for people who want cost control and proof.</p></details>
+        <details><summary>How do you know the savings are real?</summary><p>Cost comes only from signed Prune receipts. We compare Athena with two baselines on the same questions, test the accuracy difference statistically, and publish the results once the live benchmark has run.</p></details>
+        <details><summary>What if the AI service is down?</summary><p>Athena stops safely. It never makes up an answer or bills you twice, and your documents stay saved. Try the failure drill in the workspace above.</p></details>
+        <details><summary>What about hidden instructions inside a PDF?</summary><p>The document is fenced off as untrusted text, Shield is on in Prune, and answers are scanned before they are shown. We test with fifteen injection styles.</p></details>
+        <details><summary>Does a summary lose information?</summary><p>It can. That is why follow-ups also pull in the specific earlier messages that matter.</p></details>
+        <details><summary>Does it read scanned PDFs?</summary><p>Not yet. Scanned pages are flagged. Reading them is planned.</p></details>
+        <details><summary>Is my data private?</summary><p>Your workspace is separate from everyone else's and protected by a private token. You can delete any document or chat at any time.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="pad" id="start" style="padding-top:0">
+    <div class="wrap">
+      <div class="start">
+        <div class="start__form">
+          <h2 class="h-md" style="font-size:clamp(30px,3.4vw,46px)">Start a workspace</h2>
+          <p class="muted" style="max-width:40ch">No account. You get a private workspace in this browser and a spending limit you set. Athena will never go over it.</p>
+          <label class="field">Spending limit (USD)<input id="startLimit" type="number" min="0" max="1" step="0.01" value="0.25" inputmode="decimal"></label>
+          <button class="btn btn--accent" id="startBtn" type="button">Create workspace</button>
+          <p class="muted" style="font-size:13px">This page is a preview: the button sets the demo limit above and jumps to the workspace. The live app creates a real workspace.</p>
+        </div>
+        <div class="start__art"><canvas id="streaks" aria-hidden="true"></canvas></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div><a class="logo" href="#top"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 25 L16 6 L27 25 M10 19 H22" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>Athena</a><p class="muted" style="font-size:14px;margin-top:12px;max-width:26ch">Ask any document anything. See what it cost.</p></div>
+      <div><span class="label">Product</span><a href="#how">How it works</a><a href="#demo">Try the workspace</a><a href="#activity">Activity timeline</a></div>
+      <div><span class="label">Trust</span><a href="#proof">Proof and limits</a><a href="#faq">FAQ</a></div>
+      <div><span class="label">Built with</span><p style="font-size:15px">Prune for every model call and every receipt.<br>Cloudflare Workers, D1 and R2.</p><p class="muted" style="font-size:13px;margin-top:10px">Built for the FORGE "Ship It Lean" track.</p></div>
+    </div>
+  </div>
+</footer>
+<button class="themebtn" id="themeBtn" aria-label="Toggle light and dark">◐</button>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, reduce ? Math.min(ms, 30) : ms); }); };
+
+  /* ---------- theme toggle (per-viewer convenience only) ---------- */
+  $('#themeBtn').addEventListener('click', function () {
+    var root = document.documentElement;
+    var dark = root.getAttribute('data-theme') === 'dark' || (!root.getAttribute('data-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+  });
+
+  /* ---------- generative art on canvas ---------- */
+  function hash(x, y, s) {
+    var h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1274126177);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+  }
+  function vnoise(x, y, s) {
+    var xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    var u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    var a = hash(xi, yi, s), b = hash(xi + 1, yi, s), c = hash(xi, yi + 1, s), d = hash(xi + 1, yi + 1, s);
+    return (a + (b - a) * u) + ((c + (d - c) * u) - (a + (b - a) * u)) * v;
+  }
+  function fbm(x, y, s, oct) {
+    var t = 0, amp = 0.5, f = 1, n = 0;
+    for (var i = 0; i < oct; i++) { t += amp * vnoise(x * f, y * f, s + i * 17); n += amp; amp *= 0.5; f *= 2.03; }
+    return t / n;
+  }
+  function ramp(stops, t) {
+    t = Math.max(0, Math.min(1, t));
+    for (var i = 1; i < stops.length; i++) {
+      if (t <= stops[i][0]) {
+        var a = stops[i - 1], b = stops[i], k = (t - a[0]) / (b[0] - a[0] || 1);
+        return [a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k];
+      }
+    }
+    var l = stops[stops.length - 1];
+    return [l[1], l[2], l[3]];
+  }
+  function paint(canvas, kind) {
+    var W = kind === 'terrain' ? 480 : 300, H = kind === 'terrain' ? 270 : 330;
+    canvas.width = W; canvas.height = H;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    var img = ctx.createImageData(W, H);
+    var stops = kind === 'terrain'
+      ? [[0, 38, 14, 22], [0.35, 112, 44, 48], [0.58, 178, 86, 64], [0.78, 224, 150, 104], [1, 244, 214, 176]]
+      : [[0, 28, 38, 14], [0.4, 92, 98, 24], [0.62, 168, 112, 24], [0.82, 222, 120, 36], [1, 246, 188, 92]];
+    for (var y = 0; y < H; y++) {
+      for (var x = 0; x < W; x++) {
+        var n;
+        if (kind === 'terrain') {
+          var wx = fbm(x / 120, y / 120, 3, 3), wy = fbm(x / 120 + 9, y / 120 + 4, 5, 3);
+          n = fbm(x / 95 + wx * 2.2, y / 95 + wy * 2.2, 11, 5);
+          var band = Math.abs(((n * 16) % 1) - 0.5);
+          var c = ramp(stops, (n - 0.2) * 1.9);
+          var dark = band < 0.035 ? 0.78 : 1;
+          var i = (y * W + x) * 4;
+          img.data[i] = c[0] * dark; img.data[i + 1] = c[1] * dark; img.data[i + 2] = c[2] * dark; img.data[i + 3] = 255;
+        } else {
+          n = fbm(x / 9, y / 260, 21, 4) * 0.7 + fbm(x / 40, y / 90, 8, 3) * 0.3;
+          var c2 = ramp(stops, (n - 0.15) * 1.8);
+          var j = (y * W + x) * 4;
+          img.data[j] = c2[0]; img.data[j + 1] = c2[1]; img.data[j + 2] = c2[2]; img.data[j + 3] = 255;
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  paint($('#terrain'), 'terrain');
+  paint($('#streaks'), 'streaks');
+
+  /* ---------- nav: solid after the hero, mega menu ---------- */
+  var nav = $('#nav');
+  var onScroll = function () { nav.classList.toggle('solid', window.scrollY > 40 || !$('#mega').hidden); };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  var MEGA = {
+    platform: {
+      label: 'Capabilities', blurb: 'A document assistant built to combine low cost, visible spending and proof. Every answer carries the same checks.', spot: 'Every answer shows its model, cost and receipt.',
+      items: [
+        ['Index', ['Read in the browser', 'Page-aware sections']], ['Retrieve', ['Only what matches', 'Short memory window']], ['Route', ['Economy for lookups', 'Stronger when needed']],
+        ['Budget', ['Reserve before the call', 'Pause, never overspend']], ['Receipts', ['Signed by Prune', 'Verify offline']], ['Guardrails', ['Fenced documents', 'Scanned answers']]
+      ]
+    },
+    cases: {
+      label: 'Use cases', blurb: 'Start with documents that have clear fields and clear pages. More types follow the same engine.', spot: 'Contracts and invoices are live today.',
+      items: [['Contracts', ['Terms and notice', 'Liability and law']], ['Invoices', ['Fields and totals', 'Line item check']], ['Reports', ['Summaries', 'Section questions']], ['Support tickets', ['Planned']], ['Reviews', ['Planned']]]
+    }
+  };
+  function openMega(key) {
+    var m = MEGA[key];
+    $('#megaLabel').textContent = m.label;
+    $('#megaBig').innerHTML = m.items.map(function (it, i) { return '<button class="mega__big' + (i === 0 ? ' on' : '') + '" data-i="' + i + '">' + esc(it[0]) + '</button>'; }).join('');
+    $('#megaSub').innerHTML = m.items[0][1].map(function (s) { return '<a href="#demo">' + esc(s) + '</a>'; }).join('');
+    $('#megaSpot').textContent = m.spot;
+    $('#megaBlurb').textContent = m.blurb;
+    $('#mega').hidden = false;
+    $$('[data-mega]').forEach(function (b) { b.setAttribute('aria-expanded', String(b.getAttribute('data-mega') === key)); });
+    nav.classList.add('solid');
+    $('#megaBig').onmouseover = function (e) {
+      var b = e.target.closest('.mega__big'); if (!b) return;
+      $$('.mega__big').forEach(function (x) { x.classList.toggle('on', x === b); });
+      $('#megaSub').innerHTML = m.items[+b.getAttribute('data-i')][1].map(function (s) { return '<a href="#demo">' + esc(s) + '</a>'; }).join('');
+    };
+  }
+  function closeMega() { $('#mega').hidden = true; $$('[data-mega]').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); }); onScroll(); }
+  $$('[data-mega]').forEach(function (b) { b.addEventListener('click', function () { $('#mega').hidden ? openMega(b.getAttribute('data-mega')) : closeMega(); }); });
+  $('#mega').addEventListener('click', function (e) { if (e.target.closest('a') || e.target === $('#mega')) closeMega(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMega(); });
+
+  /* ---------- hero rotor ---------- */
+  var rot = $$('#rotor li'), ri = rot.length - 1;
+  var names = ['Policies', 'Reports', 'Invoices', 'Contracts'];
+  function setRotor() {
+    rot.forEach(function (li, i) { li.classList.toggle('on', i === ri); li.innerHTML = i === ri ? '<a href="#demo">Athena for ' + names[i] + ' <span aria-hidden="true">↗</span></a>' : names[i]; });
+  }
+  setRotor();
+  if (!reduce) setInterval(function () { ri = (ri + 1) % rot.length; setRotor(); }, 2600);
+
+  /* ---------- orbit ---------- */
+  var STEPS = [
+    ['Read', 'Read in your browser', 'Text is pulled from the PDF on your own device, so nothing is re-processed for every question.'],
+    ['Index', 'Index once', 'Athena splits the document into sections that remember their page, and stores them so later questions never touch the file again.'],
+    ['Retrieve', 'Send only what matters', 'Only the few sections that match your question go to the model, plus a short memory of the conversation.'],
+    ['Route', 'Right-size the model', 'A short lookup uses an economical model. A comparison or calculation can use a stronger one. You always see which.'],
+    ['Reserve', 'Check the budget first', 'The estimated cost is reserved before the call. If it does not fit, nothing is sent and you choose what to do.'],
+    ['Ask', 'One path to any model', 'Every call goes through Prune. Temporary failures retry a few times; spend caps and uncertain billing never retry blindly.'],
+    ['Verify', 'Prove it', 'The receipt is checked, citations are validated against what was sent, and the answer is scanned. Cost comes from the receipt.']
+  ];
+  var oi = 0, orbitTimer = null;
+  function drawOrbit() {
+    var cx = 280, cy = 250, r = 190, ns = 'http://www.w3.org/2000/svg';
+    var svg = $('#orbit'); svg.innerHTML = '';
+    var c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', r); c.setAttribute('fill', 'none'); c.setAttribute('stroke', 'rgba(255,255,255,.35)'); svg.appendChild(c);
+    STEPS.forEach(function (s, i) {
+      var a = (-90 + i * (360 / STEPS.length)) * Math.PI / 180;
+      var x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+      var g = document.createElementNS(ns, 'g'); g.setAttribute('class', 'orbit__node'); g.setAttribute('tabindex', '0'); g.setAttribute('role', 'button'); g.setAttribute('aria-label', s[1]);
+      var dot = document.createElementNS(ns, 'circle'); dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('r', i === oi ? 7 : 6); dot.setAttribute('fill', i === oi ? '#fff' : '#000'); dot.setAttribute('stroke', '#fff'); dot.setAttribute('stroke-width', '1.3');
+      var hit = document.createElementNS(ns, 'circle'); hit.setAttribute('cx', x); hit.setAttribute('cy', y); hit.setAttribute('r', 22); hit.setAttribute('fill', 'transparent');
+      var t = document.createElementNS(ns, 'text'); t.setAttribute('class', 'orbit__lbl');
+      var lx = x + (Math.cos(a) > 0.2 ? 18 : Math.cos(a) < -0.2 ? -18 : 0), ly = y + (Math.sin(a) > 0.5 ? 30 : Math.sin(a) < -0.5 ? -16 : 4);
+      t.setAttribute('x', lx); t.setAttribute('y', ly); t.setAttribute('text-anchor', Math.cos(a) > 0.2 ? 'start' : Math.cos(a) < -0.2 ? 'end' : 'middle'); t.setAttribute('opacity', i === oi ? 1 : 0.6); t.textContent = s[0];
+      g.appendChild(hit); g.appendChild(dot); g.appendChild(t);
+      g.addEventListener('click', function () { oi = i; renderOrbit(); resetOrbitTimer(); });
+      g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); oi = i; renderOrbit(); resetOrbitTimer(); } });
+      svg.appendChild(g);
+    });
+  }
+  function renderOrbit() {
+    drawOrbit();
+    $('#orbitText').innerHTML = '<h4>' + esc(STEPS[oi][1]) + '</h4><p>' + esc(STEPS[oi][2]) + '</p>';
+  }
+  function resetOrbitTimer() { clearInterval(orbitTimer); if (!reduce) orbitTimer = setInterval(function () { oi = (oi + 1) % STEPS.length; renderOrbit(); }, 3600); }
+  renderOrbit(); resetOrbitTimer();
+
+  /* ---------- timeline cards (shared by landing and workspace) ---------- */
+  var ICON = { context: ['#2a7de1', '⌕'], tier: ['#7a4fe0', '⑂'], reserve: ['#e08a00', '◐'], call: ['#12a37f', '↗'], verify: ['#3fa7e8', '✓'], escalate: ['#7a4fe0', '↑'], scan: ['#2a7de1', '◉'], pause: ['#f26b3a', 'Ⅱ'], error: ['#b3261e', '!'], done: ['#1d7a4b', '✓'], retry: ['#e08a00', '↻'] };
+  function stepHtml(s, live) {
+    var ic = ICON[s.step] || ['#888', '•'];
+    return '<div class="step"><div class="step__top"><span class="step__ic" style="background:' + ic[0] + '">' + ic[1] + '</span>' + esc(s.label) + '<span class="' + (live ? 'step__live' : 'step__done') + '">' + (live ? 'Working' : (s.step === 'error' ? 'Stopped' : s.step === 'pause' ? 'Paused' : 'Done')) + '</span></div><div class="step__sub">' + esc(s.detail) + (s.ms != null ? ' · ' + esc(fmtMs(s.ms)) : '') + '</div></div>';
+  }
+  function fmtMs(n) { return n < 1000 ? n + ' ms' : (n / 1000).toFixed(1) + ' s'; }
+  var DEMO = [
+    { step: 'context', label: 'Finding relevant sections', detail: '3 sections, pages 3 and 5', ms: 14 },
+    { step: 'tier', label: 'Choosing a model', detail: 'economy: short lookup', ms: 1 },
+    { step: 'reserve', label: 'Reserving budget', detail: 'up to $0.000400', ms: 3 },
+    { step: 'call', label: 'Asking through Prune', detail: 'attempt 1', ms: 1630 },
+    { step: 'verify', label: 'Verifying receipt', detail: 'signature valid', ms: 22 }
+  ];
+  var demoBox = $('#demoSteps');
+  demoBox.innerHTML = DEMO.map(function (s) { return stepHtml(s, false); }).join('');
+  var demoCards = $$('.step', demoBox);
+  function loopDemo() {
+    demoCards.forEach(function (c) { c.classList.add('off'); });
+    demoCards.forEach(function (c, i) { setTimeout(function () { c.classList.remove('off'); }, 500 + i * 650); });
+  }
+  if (reduce) { /* leave everything visible */ } else {
+    loopDemo(); setInterval(loopDemo, 500 + demoCards.length * 650 + 4200);
+  }
+
+  /* ---------- proof bars ---------- */
+  var PROMPT = [['Whole document + history', 10639, ''], ['Top-8 sections + history', 2231, ''], ['Athena', 2134, 'a']];
+  var maxP = 10639;
+  $('#bigbars').innerHTML = PROMPT.map(function (p) { return '<div class="bigbar ' + p[2] + '"><span>' + esc(p[0]) + '</span><span><i style="width:' + (p[1] / maxP * 100).toFixed(1) + '%"></i></span><span>' + p[1].toLocaleString('en-US') + ' tok</span></div>'; }).join('');
+
+  /* ---------- start button ---------- */
+  $('#startBtn').addEventListener('click', function () {
+    var v = parseFloat($('#startLimit').value);
+    if (isFinite(v) && v >= 0 && v <= 1) { $('#limit').value = Math.min(v, 1).toFixed(4); S.limit = Math.min(v, 1); }
+    renderAll();
+    $('#demo').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+  });
+
+  /* ============================== demo workspace ============================== */
+  var DOC = [
+    'AGREEMENT 1 BETWEEN NORTHWIND AND HARBOR LOGISTICS\nThis agreement sets out the terms on which the Supplier provides logistics services to the Customer. Each party shall cooperate in good faith regarding the schedule of services.',
+    'DELIVERY\nGoods must be delivered within 10 business days of each order. Risk passes to the Customer on delivery. The minimum order quantity is 100 units. The Supplier will coordinate on shared tooling.',
+    'TERMINATION\nEither party may terminate this agreement by giving 90 days written notice. Fees already paid are not refunded. An earlier draft required 30 days written notice, but it was replaced.',
+    'LIABILITY AND WARRANTY\nThe supplier\'s total liability under this agreement shall not exceed $500,000. The warranty period for delivered goods is 18 months from acceptance. A prior proposal set the liability limit at $250,000, which was rejected.',
+    'PAYMENT\nThe customer shall pay each invoice within 45 days of the invoice date. Overdue amounts accrue a late fee of 1.5% per month. Under the previous agreement, which is no longer in force, invoices were payable within 30 days.',
+    'TERM AND LAW\nThis agreement renews automatically for successive terms of 2 years. The confidentiality obligations survive termination for 5 years. This agreement is governed by the laws of England and Wales.'
+  ];
+  var STOP = {}; 'the a an of to in is are was were what which who how do does did and or not for on it this that with me my be by as at have has many much each every under'.split(' ').forEach(function (w) { STOP[w] = 1; });
+  function stem(w) { return w.replace(/(ing|ed)$/, '').replace(/(sses|shes|ches|xes)$/, function (m) { return m.slice(0, -2); }).replace(/([^s])s$/, '$1'); }
+  function terms(s) { return s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(function (w) { return w.length > 2 && !STOP[w]; }).map(stem); }
+  var SENTS = [];
+  DOC.forEach(function (p, i) {
+    var lines = p.split('\n'), title = lines[0];
+    lines.slice(1).join(' ').split(/(?<=[.!?])\s+/).forEach(function (s) { if (s.trim().length > 15) SENTS.push({ page: i + 1, text: s.trim(), title: title, terms: terms(s + ' ' + title) }); });
+  });
+  var DOC_TOK = Math.ceil(DOC.join('\n').length / 4);
+  var PRICE = { economy: [0.15, 0.6], standard: [2, 8], strong: [2.5, 10] }; // USD per 1M tokens: placeholders
+  var SYS_TOK = 110;
+  var tok = function (s) { return Math.ceil(s.length / 4); };
+  var money = function (n) { return '$' + n.toFixed(n < 0.01 ? 6 : 4); };
+
+  var S = null;
+  function fresh() { return { limit: 0.005, spent: 0, reserved: 0, turns: [], tab: 'act', sel: null, page: 1, hl: '', busy: false, uid: 0 }; }
+  S = fresh();
+
+  function retrieve(q) {
+    var qt = terms(q);
+    if (!qt.length) return null;
+    var scored = SENTS.map(function (s) {
+      var sc = 0; qt.forEach(function (t) { if (s.terms.indexOf(t) >= 0) sc += 1; });
+      return { s: s, sc: sc };
+    }).filter(function (x) { return x.sc > 0; }).sort(function (a, b) { return b.sc - a.sc; });
+    if (!scored.length || scored[0].sc < Math.min(2, qt.length)) return null;
+    return scored;
+  }
+  function pickTier(q) { return /\b(compare|calculate|compute|difference|versus)\b/i.test(q) ? 'strong' : (q.length > 140 ? 'standard' : 'economy'); }
+
+  function plan(q, shorter) {
+    var hits = retrieve(q);
+    var pages = hits ? Array.from(new Set(hits.slice(0, shorter ? 1 : 4).map(function (h) { return h.s.page; }))).slice(0, shorter ? 1 : 3) : [1];
+    var ctxTok = pages.reduce(function (a, p) { return a + tok(DOC[p - 1]); }, 0);
+    var memTok = S.turns.slice(-2).reduce(function (a, t) { return a + (t.done ? tok(t.q) + tok(t.answer || '') : 0); }, 0);
+    var promptTok = SYS_TOK + ctxTok + memTok + tok(q);
+    var tier = shorter ? 'economy' : pickTier(q);
+    var maxOut = shorter ? 200 : 600;
+    var est = (promptTok * PRICE[tier][0] + maxOut * PRICE[tier][1]) / 1e6;
+    var naive = SYS_TOK + DOC_TOK + S.turns.reduce(function (a, t) { return a + (t.done ? tok(t.q) + tok(t.answer || '') : 0); }, 0) + tok(q);
+    return { hits: hits, pages: pages, promptTok: promptTok, tier: tier, maxOut: maxOut, est: est, naive: naive };
+  }
+
+  function renderMeter() {
+    var lim = Math.max(S.limit, 0.0000001);
+    $('#mSpent').style.width = Math.min(100, S.spent / lim * 100) + '%';
+    $('#mRes').style.left = Math.min(100, S.spent / lim * 100) + '%';
+    $('#mRes').style.width = Math.min(100 - Math.min(100, S.spent / lim * 100), S.reserved / lim * 100) + '%';
+    $('#mText').textContent = money(S.spent) + ' of ' + money(S.limit) + ' used' + (S.reserved ? ' · ' + money(S.reserved) + ' reserved' : '');
+    var done = S.turns.filter(function (t) { return t.done; }).length;
+    $('#docStats').textContent = done + ' answer' + (done === 1 ? '' : 's') + ' so far';
+  }
+
+  function citeify(text) {
+    return esc(text).replace(/\[p\.(\d+)\]/g, function (m, p) { return '<button class="cite" data-cite="' + p + '" aria-label="Open page ' + p + '">p.' + p + '</button>'; });
+  }
+  function renderChat() {
+    var el = $('#chat');
+    if (!S.turns.length) {
+      el.innerHTML = '<div class="card"><h4>Ask about your document</h4><p class="muted">Pick a question below, or type your own. Try one the contract cannot answer, and see what Athena says.</p></div>';
+      return;
+    }
+    el.innerHTML = S.turns.map(function (t) {
+      var out = '<div class="q">' + esc(t.q) + '</div>';
+      if (t.status === 'working') out += '<div class="a"><div class="foot"><span class="badge badge--sim">Working</span> Watch the Activity tab.</div></div>';
+      else if (t.status === 'done') {
+        out += '<div class="a"><div class="a__text">' + citeify(t.answer) + '</div><div class="foot"><span>' + esc(t.tierLabel) + '</span><span>' + money(t.cost) + '</span><span>' + t.sent + ' tokens sent <span class="muted">(whole document: ' + t.naive + ')</span></span><span class="badge badge--sim" title="No signature in this preview">Simulated receipt</span><button class="linkbtn" data-open="rec" data-id="' + t.id + '">Receipt</button><button class="linkbtn" data-open="act" data-id="' + t.id + '">Activity</button></div></div>';
+      } else if (t.status === 'paused') {
+        out += '<div class="a"><div class="card card--warn"><h4>Not enough allowance for this answer</h4><p>This question needs about <b>' + money(t.p.est) + '</b>. You have <b>' + money(Math.max(0, S.limit - S.spent - S.reserved)) + '</b> left. Nothing has been sent.</p><div class="row"><button class="btn btn--sm" data-act="shorter" data-id="' + t.id + '"' + (t.shorterTried ? ' disabled' : '') + '>Make it shorter</button><button class="btn btn--ghost btn--sm" data-act="raise" data-id="' + t.id + '">Raise my limit</button><button class="btn btn--ghost btn--sm" data-act="cancel" data-id="' + t.id + '">Cancel</button></div></div></div>';
+      } else if (t.status === 'failed') {
+        out += '<div class="a"><div class="card card--warn"><h4>' + esc(t.errTitle) + '</h4><p>' + esc(t.errText) + '</p><div class="row">' + (t.retryable ? '<button class="btn btn--sm" data-act="retry" data-id="' + t.id + '">Retry once</button><button class="btn btn--ghost btn--sm" data-act="cancel" data-id="' + t.id + '">Leave it</button>' : '<button class="btn btn--ghost btn--sm" data-act="cancel" data-id="' + t.id + '">Dismiss</button>') + '</div><p class="muted" style="font-size:12px">' + esc(t.errNote) + '</p></div></div>';
+      } else if (t.status === 'cancelled') {
+        out += '<div class="a"><div class="foot">Cancelled. Nothing was charged.</div></div>';
+      }
+      return '<div style="display:grid;gap:12px">' + out + '</div>';
+    }).join('');
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function selTurn() { return S.turns.find(function (t) { return t.id === S.sel; }) || S.turns[S.turns.length - 1]; }
+  function renderPane() {
+    $$('.tabs button').forEach(function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-tab') === S.tab)); });
+    var p = $('#pane'), t = selTurn();
+    if (S.tab === 'act') {
+      if (!t) { p.innerHTML = '<p class="muted">The steps for each question appear here, live.</p>'; return; }
+      p.innerHTML = '<span class="label muted">Activity</span><div class="steps" style="width:100%">' + t.trace.map(function (s, i) { return stepHtml(s, t.status === 'working' && i === t.trace.length - 1); }).join('') + '</div>' + (t.trace.length ? '<p class="muted" style="font-size:12px">Timings are simulated in this preview.</p>' : '');
+    } else if (S.tab === 'rec') {
+      if (!t || t.status !== 'done') { p.innerHTML = '<p class="muted">Finish a question to see its receipt.</p>'; return; }
+      p.innerHTML = '<span class="label muted">Receipt</span><span class="badge badge--sim" style="justify-self:start">SIMULATED: no signature, not from Prune</span><dl class="kv"><dt>Tier</dt><dd>' + esc(t.tierLabel) + '</dd><dt>Cost</dt><dd>' + money(t.cost) + '</dd><dt>Prompt tokens</dt><dd>' + t.sent + '</dd><dt>Output tokens</dt><dd>' + t.out + '</dd><dt>Cache</dt><dd>miss</dd><dt>Whole-document prompt</dt><dd>' + t.naive + ' tokens</dd></dl><div class="mono">' + esc(JSON.stringify({ receipt_id: 'demo_' + t.id, model: t.tier + ' (demo)', cost_with_prune_usd: Number(t.cost.toFixed(6)), cache_hit: false, receipt_signature: '(none in preview)' }, null, 2)) + '</div><p class="muted" style="font-size:12px">The live app shows the exact bytes Prune signed and a verify button that checks the Ed25519 signature.</p>';
+    } else if (S.tab === 'page') {
+      var pg = S.page, txt = DOC[pg - 1];
+      var html = esc(txt);
+      if (S.hl) html = html.replace(esc(S.hl), '<mark>' + esc(S.hl) + '</mark>');
+      p.innerHTML = '<span class="label muted">Page ' + pg + ' of ' + DOC.length + '</span><div class="mono" style="white-space:pre-wrap">' + html + '</div><div class="row"><button class="btn btn--ghost btn--sm" data-page="' + Math.max(1, pg - 1) + '">Previous</button><button class="btn btn--ghost btn--sm" data-page="' + Math.min(DOC.length, pg + 1) + '">Next</button></div>';
+    } else {
+      var done = S.turns.filter(function (x) { return x.status === 'done'; });
+      var mx = Math.max.apply(null, done.map(function (x) { return x.cost; }).concat([0.000001]));
+      p.innerHTML = '<span class="label muted">Usage</span><dl class="kv"><dt>Spent</dt><dd>' + money(S.spent) + '</dd><dt>Answers</dt><dd>' + done.length + '</dd><dt>Average per answer</dt><dd>' + (done.length ? money(S.spent / done.length) : 'n/a') + '</dd></dl>' + (done.length ? '<span class="label muted">Cost per answer</span><div class="bars">' + done.map(function (x, i) { return '<div class="bar"><span>Q' + (i + 1) + '</span><i style="width:' + Math.max(2, x.cost / mx * 100) + '%"></i><span>' + money(x.cost) + '</span></div>'; }).join('') + '</div><span class="label muted" style="margin-top:6px">Tokens sent vs whole document</span><div class="bars">' + done.map(function (x, i) { return '<div class="bar"><span>Q' + (i + 1) + '</span><i class="acc" style="width:' + Math.max(2, x.sent / (x.naive || 1) * 100) + '%"></i><span>' + x.sent + '/' + x.naive + '</span></div>'; }).join('') + '</div>' : '<p class="muted">Ask a question to see what it cost.</p>') + '<p class="muted" style="font-size:12px">This sample is tiny (about ' + DOC_TOK + ' tokens), so Athena sends close to the whole document here. On the 30-page benchmark agreements the whole document is about 10,600 tokens and Athena sends about 2,100.</p>';
+    }
+  }
+  function renderAll() { renderMeter(); renderChat(); renderPane(); }
+
+  function push(t, step, label, detail, ms) { t.trace.push({ step: step, label: label, detail: detail, ms: ms }); renderPane(); }
+
+  async function run(t, opts) {
+    opts = opts || {};
+    S.busy = true; $('#send').disabled = true;
+    t.status = 'working'; t.trace = []; S.sel = t.id; S.tab = 'act'; renderAll();
+    var p = plan(t.q, !!opts.shorter);
+    t.p = p;
+    await sleep(250);
+    push(t, 'context', 'Finding relevant sections', p.hits ? p.pages.length + ' section' + (p.pages.length === 1 ? '' : 's') + ', page' + (p.pages.length === 1 ? ' ' : 's ') + p.pages.join(', ') : 'no strong match, first page only', 14);
+    await sleep(380);
+    push(t, 'tier', 'Choosing a model', p.tier + (p.tier === 'economy' ? ': short lookup' : ': needs more reasoning'), 1);
+    await sleep(380);
+    var room = S.limit - S.spent - S.reserved;
+    if (p.est > room) {
+      push(t, 'reserve', 'Reserving budget', 'needs about ' + money(p.est), 3);
+      push(t, 'pause', 'Paused: allowance too low', 'nothing was sent', 0);
+      t.status = 'paused'; S.busy = false; $('#send').disabled = false; renderAll(); return;
+    }
+    S.reserved += p.est; renderMeter();
+    push(t, 'reserve', 'Reserving budget', 'up to ' + money(p.est), 3);
+    await sleep(450);
+    var drill = opts.noDrill ? 'none' : $('#drill').value;
+    if (drill !== 'none') $('#drill').value = 'none';
+    if (drill === 'outage') {
+      for (var a = 1; a <= 3; a++) { push(t, 'retry', 'Asking through Prune', 'attempt ' + a + ': service unavailable (503)', 400 * a); await sleep(650); }
+      S.reserved -= p.est;
+      push(t, 'error', 'Stopped', 'provider_unavailable after 3 attempts. Nothing charged.', 0);
+      fail(t, 'AI service is down', 'We tried three times and stopped. Your documents and chats are saved.', 'No blind retries beyond the limit. The reservation was released, so nothing was charged.', true);
+      return;
+    }
+    if (drill === 'cap') {
+      push(t, 'error', 'Stopped', 'spend_cap from Prune (429). Not retried.', 0);
+      S.reserved -= p.est;
+      fail(t, 'Spending limit reached', 'A spending limit on the service side stopped this call. You can shorten the question or try again later.', 'A spend-cap response is never retried. Nothing was charged.', false);
+      return;
+    }
+    if (drill === 'drop') {
+      push(t, 'call', 'Asking through Prune', 'request sent', 0);
+      await sleep(900);
+      S.reserved -= p.est; S.spent += p.est; t.chargedEst = p.est;
+      push(t, 'error', 'Stopped', 'connection lost after sending: billing uncertain. No automatic retry.', 0);
+      fail(t, "We can't tell if this was billed", 'The connection dropped after your question was sent, so no receipt came back. The estimated cost (' + money(p.est) + ') was counted against your allowance to be safe.', 'Retrying may be charged again.', true);
+      return;
+    }
+    push(t, 'call', 'Asking through Prune', 'attempt 1', 0);
+    await sleep(900);
+    t.trace[t.trace.length - 1].ms = 880 + Math.round(p.promptTok / 4);
+    var best = p.hits ? p.hits[0].s : null;
+    var answer = best ? 'According to the document, ' + best.text.charAt(0).toLowerCase() + best.text.slice(1) + ' [p.' + best.page + ']' : "I couldn't find that in the document.";
+    var outTok = tok(answer);
+    var cost = (p.promptTok * PRICE[p.tier][0] + outTok * PRICE[p.tier][1]) / 1e6;
+    S.reserved -= p.est; S.spent += cost;
+    push(t, 'verify', 'Verifying receipt', 'simulated: no signature in this preview', 22);
+    push(t, 'scan', 'Checking the answer', 'nothing removed', 3);
+    push(t, 'done', 'Done', money(cost), 0);
+    t.answer = answer; t.cost = cost; t.out = outTok; t.sent = p.promptTok; t.naive = p.naive; t.tier = p.tier;
+    t.tierLabel = p.tier.charAt(0).toUpperCase() + p.tier.slice(1); t.hl = best ? best.text : '';
+    t.status = 'done'; t.done = true; if (best) { S.page = best.page; S.hl = best.text; }
+    S.busy = false; $('#send').disabled = false; renderAll();
+  }
+  function fail(t, title, text, note, retryable) {
+    t.status = 'failed'; t.errTitle = title; t.errText = text; t.errNote = note; t.retryable = retryable;
+    S.busy = false; $('#send').disabled = false; renderAll();
+  }
+
+  function ask(q) {
+    q = q.trim(); if (!q || S.busy) return;
+    var t = { id: ++S.uid, q: q, status: 'working', trace: [], done: false };
+    S.turns.push(t); $('#qin').value = '';
+    run(t, { shorter: $('#short').checked });
+  }
+
+  $('#form').addEventListener('submit', function (e) { e.preventDefault(); ask($('#qin').value); });
+  $('#sugg').innerHTML = ['How many days does the customer have to pay each invoice?', 'How much notice is needed to terminate?', "What is the cap on the supplier's liability?", 'Which law governs this agreement?', 'Who won the 2018 World Cup?'].map(function (q) { return '<button type="button" data-q="' + esc(q) + '">' + esc(q) + '</button>'; }).join('');
+  $('#sugg').addEventListener('click', function (e) { var b = e.target.closest('[data-q]'); if (b) ask(b.getAttribute('data-q')); });
+  $('#limit').addEventListener('change', function () { var v = parseFloat(this.value); if (isFinite(v) && v >= 0) { S.limit = Math.min(v, 1); this.value = S.limit.toFixed(4); renderMeter(); } });
+  $('.tabs').addEventListener('click', function (e) { var b = e.target.closest('[data-tab]'); if (b) { S.tab = b.getAttribute('data-tab'); renderPane(); } });
+  $('#pane').addEventListener('click', function (e) { var b = e.target.closest('[data-page]'); if (b) { S.page = +b.getAttribute('data-page'); S.hl = ''; renderPane(); } });
+  $('#chat').addEventListener('click', function (e) {
+    var c = e.target.closest('[data-cite]'); if (c) { S.page = +c.getAttribute('data-cite'); var t = selTurn(); S.hl = (t && t.hl) || ''; S.tab = 'page'; renderPane(); return; }
+    var o = e.target.closest('[data-open]'); if (o) { S.sel = +o.getAttribute('data-id'); S.tab = o.getAttribute('data-open'); renderPane(); return; }
+    var a = e.target.closest('[data-act]'); if (!a) return;
+    var t2 = S.turns.find(function (x) { return x.id === +a.getAttribute('data-id'); }); if (!t2 || S.busy) return;
+    var act = a.getAttribute('data-act');
+    if (act === 'shorter') { t2.shorterTried = true; run(t2, { shorter: true }); }
+    else if (act === 'raise') { var nv = Math.min(1, +(S.limit + Math.max(0.005, t2.p ? t2.p.est * 2 : 0.005)).toFixed(4)); S.limit = nv; $('#limit').value = nv.toFixed(4); run(t2, {}); }
+    else if (act === 'retry') { run(t2, { noDrill: true }); }
+    else if (act === 'cancel') { t2.status = 'cancelled'; renderAll(); }
+  });
+  $('#reset').addEventListener('click', function () { var lim = S.limit; S = fresh(); S.limit = lim; $('#send').disabled = false; renderAll(); });
+  $('#dlSummary').addEventListener('click', function () {
+    var done = S.turns.filter(function (t) { return t.status === 'done'; });
+    var md = '# agreement-1.pdf\n\n' + (done.length ? done.map(function (t, i) { return '### Question ' + (i + 1) + '\n\n' + t.q + '\n\n' + t.answer + '\n\n*Cost: ' + money(t.cost) + ' (simulated)*\n'; }).join('\n') : 'No answers yet.\n');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(md).then(function () { flash('Summary copied as Markdown'); }, function () { showMd(md); });
+      else showMd(md);
+    } catch (err) { showMd(md); }
+  });
+  function showMd(md) { S.tab = 'rec'; $('#pane').innerHTML = '<span class="label muted">Summary (Markdown)</span><div class="mono">' + esc(md) + '</div><p class="muted" style="font-size:12px">Downloads are blocked in this preview, so the summary is shown here to copy. The live app downloads a .md file.</p>'; }
+  function flash(msg) { var b = $('#dlSummary'), o = b.textContent; b.textContent = msg; setTimeout(function () { b.textContent = o; }, 1800); }
+
+  renderAll();
+})();
+</script>
