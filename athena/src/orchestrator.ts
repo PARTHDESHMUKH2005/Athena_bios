@@ -1,6 +1,6 @@
 // The orchestrator: runs one question through the whole pipeline (athena.md 2.5). There are no autonomous
 // agent loops by design. The "agents" are fixed roles, each a module with one job, and Prune's
-// X-Prune-Max-Steps caps any run at 3 calls (answer, one escalation, one spare):
+// X-Prune-Max-Steps caps any run at 6 requests (every HTTP attempt counts, retries included):
 //   retrieval agent   -> context.ts      router agent   -> tiers.ts
 //   answer agent      -> llm.ts          verifier agent -> receipts.ts + answer.ts
 //   memory agent      -> maybeSummarize  budget guard   -> budget.ts
@@ -248,7 +248,8 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
     const picked = pickTier({ purpose, question: p.question, contextTokens: built.promptTokens, documentCount: built.documentCount });
     const tier = lowerTier(picked.tier, a.down);
     await trace.add('tier', `${tier}: ${picked.reason}`);
-    const maxOut = short ? SHORT_OUT : MAX_OUT[p.mode];
+    // Models that spend output tokens on hidden thinking (Gemini 3.x) can need a floor, set per tier in MODEL_TIERS.
+    const maxOut = Math.max(short ? SHORT_OUT : MAX_OUT[p.mode], tiers[tier].minOutputTokens ?? 0);
     const est = estimateMicro(tiers[tier], built.promptTokens, maxOut);
     await trace.add('reserve', `up to $${(est / 1e6).toFixed(6)}`);
     try {
@@ -292,7 +293,10 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
   let { call } = first;
   const { built, tier } = first;
   const calls: CallResult[] = [call];
-  await trace.add('call', call.attempts > 1 ? `succeeded on attempt ${call.attempts}` : 'attempt 1');
+  await trace.add(
+    'call',
+    [call.attempts > 1 ? `succeeded on attempt ${call.attempts}` : 'attempt 1', call.truncated ? 'cut off at the output limit' : '', call.outputCapApplied ? 'Prune shortened the output limit' : ''].filter(Boolean).join(', '),
+  );
   await trace.add('verify', `receipt ${call.verifyStatus}${call.cacheHit ? ', cache hit' : ''}${call.shieldSignal ? `, shield: ${call.shieldSignal}` : ''}`);
 
   // Validate the output; escalate to the next tier at most once.
@@ -320,7 +324,7 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
           tier: target,
           messages: built.messages,
           promptTokens: built.promptTokens,
-          maxOutputTokens: first.short ? SHORT_OUT : MAX_OUT[p.mode],
+          maxOutputTokens: Math.max(first.short ? SHORT_OUT : MAX_OUT[p.mode], tiers[target].minOutputTokens ?? 0),
           runBudgetMicro: perCall,
           idempotencyKey: `${baseKey}:esc`,
           json: p.mode === 'extract',
@@ -340,6 +344,14 @@ export async function runAssistant(env: Env, exec: ExecLike, p: RunParams): Prom
   }
 
   let content = call.text;
+  // Never present a cut-off answer as complete. An empty one means the model used its whole output limit before writing.
+  if (call.truncated && p.mode !== 'extract') {
+    content = content.trim()
+      ? `${content}
+
+(This answer was cut off because it reached the output limit.)`
+      : 'The model used its whole output limit before writing an answer. Try again, or ask a shorter question.';
+  }
   let citations: Citation[] = [];
   if (p.mode === 'extract') {
     if (!('invoice' in verdict)) return failMessage(db, trace, p.asstId, new AppError('validation_failed', 'Could not read this invoice into fields. Nothing is shown as verified.'), call.callId);

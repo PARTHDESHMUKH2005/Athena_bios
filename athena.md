@@ -277,7 +277,7 @@ Step details:
 | repair (escalation) | same as the original | `off` | `repair` |
 | ocr (stretch) | `structured_extraction` | `exact` | `ocr` |
 
-Every call also sends `X-Prune-Run-Id` = message id (or document id for ingest calls), `X-Prune-Run-Budget-Usd` = the per-call cap, `X-Prune-Max-Steps` = 3 (one call, one escalation, one spare), `X-Prune-Customer-Id` = workspace id. Accepted workload tags and cache values are confirmed in Phase 0.
+Every call also sends `X-Prune-Run-Id` = message id (or document id for ingest calls), `X-Prune-Run-Budget-Usd` = the per-call cap, `X-Prune-Max-Steps` = 6 (every HTTP attempt is a step: up to three attempts for the answer and three for one escalation), `X-Prune-Customer-Id` = workspace id. Accepted workload tags and cache values are confirmed in Phase 0.
 
 **Budget reservation (the key safety mechanism).**
 ```

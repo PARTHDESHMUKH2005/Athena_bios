@@ -35,7 +35,7 @@ Legend: **Tested** = automated test in this repo exercises it against real SQLit
 
 ## "Agents" and the orchestrator
 
-There are no autonomous agent loops, by design: cost and failure behaviour must be bounded. The roles are fixed modules the orchestrator calls in order, and Prune's `X-Prune-Max-Steps: 3` caps any run server side.
+There are no autonomous agent loops, by design: cost and failure behaviour must be bounded. The roles are fixed modules the orchestrator calls in order, and Prune's `X-Prune-Max-Steps: 6` caps any run server side.
 
 | Role | Module |
 |---|---|

@@ -9,6 +9,8 @@ export interface TierConfig {
   inPerM: number;
   /** USD per 1M output tokens. */
   outPerM: number;
+  /** Floor for max_tokens, for models that spend output tokens on hidden thinking (e.g. Gemini 3.x). Default 0. */
+  minOutputTokens?: number;
 }
 export type TierTable = Record<Tier, TierConfig>;
 
