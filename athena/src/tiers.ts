@@ -15,14 +15,15 @@ export interface TierConfig {
 export type TierTable = Record<Tier, TierConfig>;
 
 /**
- * PLACEHOLDERS. Models are addressed by capability tier in code; the concrete model ids and prices
- * come from MODEL_TIERS and must be set after checking which models are enabled in the Prune vault
- * (Phase 0 item 11). Reconcile estimates against real receipts.
+ * Model ids are the Gemini models that answered a real call through Prune on 2026-10-31 (PHASE0-FINDINGS.md);
+ * only a Gemini key was working in the vaults then. PRICES ARE UNVERIFIED PLACEHOLDERS: Prune's /v1/models
+ * returns no prices, so set the real ones via MODEL_TIERS and reconcile against receipts
+ * (cost_with_prune_usd). Gemini 3.x spends output tokens on hidden thinking, hence the floor.
  */
 export const DEFAULT_TIERS: TierTable = {
-  economy: { model: 'gpt-4o-mini', inPerM: 0.15, outPerM: 0.6 },
-  standard: { model: 'gpt-4.1', inPerM: 2, outPerM: 8 },
-  strong: { model: 'gpt-4o', inPerM: 2.5, outPerM: 10 },
+  economy: { model: 'gemini/gemini-3.1-flash-lite', inPerM: 0.1, outPerM: 0.4, minOutputTokens: 1024 },
+  standard: { model: 'gemini/gemini-3.5-flash', inPerM: 0.3, outPerM: 2.5, minOutputTokens: 1024 },
+  strong: { model: 'gemini/gemini-3.1-pro-preview', inPerM: 1.25, outPerM: 10, minOutputTokens: 2048 },
 };
 
 export function loadTiers(env: Pick<Env, 'MODEL_TIERS'>): TierTable {
