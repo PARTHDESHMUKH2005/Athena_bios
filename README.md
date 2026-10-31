@@ -7,6 +7,9 @@ Ask any document anything, see what each answer cost, and verify the receipt. Bu
 | `memory.md` | The team's agreed product scope, flow, safety controls and build order (source of truth) |
 | `prune.md` | Notes on integrating with Prune (unverified until Phase 0) |
 | `athena.md` | Technical plan for the document question-and-answer engine: architecture, database, API, tests, benchmark |
+| `STATUS.md` | Project status, the four workstreams with file ownership, and the phases (read this first) |
+| `CONTRIBUTING.md` | How we avoid merge conflicts |
+| `status/` | One status file per team member (each person edits only their own) |
 | `athena-content.md` | Website and in-app copy |
 | `athena/` | The code: Cloudflare Worker backend (`src/`), React app (`web/`), mock Prune, tests, benchmark. Start at `athena/README.md` |
 | `docs/archive/` | Earlier plans kept for reference |
