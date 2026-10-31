@@ -42,7 +42,7 @@ Run by Harshdeep with two Prune keys against `https://api.withprune.com/v1`, usi
 | Field names | `cost_with_prune_usd`, `cost_without_prune_usd`, `cache_hit`, `cache_type`, `receipt_signature` (88 chars), `receipt_signed_at`, `receipt_signing_key_id` exist exactly as assumed. The receipt has about 150 fields in all (savings breakdown, Shield events, latency, routing, cache scope) |
 | Cost | `cost_with_prune_usd` 0.000002 for a one-word answer |
 | Response headers | `x-prune-cache-hit`, `x-prune-cache-type`, `x-prune-cost-saved`, `x-prune-provider`, `x-prune-pipeline-mode`, `x-prune-output-cap-applied`, `x-prune-total-ms`, `x-prune-upstream-ms`, `x-prune-why-no-savings` |
-| Cache scope | `cache_scope: "customer": the cache is per `X-Prune-Customer-Id` (our workspace id), so workspaces do not share cached answers |
+| Cache scope | `cache_scope: "customer"`: the cache is per `X-Prune-Customer-Id` (our workspace id), so workspaces do not share cached answers |
 
 ### Surprises that need decisions
 
