@@ -1,531 +1,339 @@
-# Sift: Lean Issue Triage on Prune
+# Athena: General AI Assistant on a Budget
 
-Working name: **Sift**. Hackathon: FORGE, track "Ship It Lean: AI Apps on a Budget". Team of 4.
+Last updated: 2026-10-31 (Asia/Calcutta).
 
-This file is the single source of truth for scope, architecture, phases and ownership. Update it as decisions change. Anything marked **VERIFY** is an assumption about Prune we must confirm in Phase 0 before building on it.
+This document is the source of truth for the agreed project scope, application flow, safety controls, and build order. It describes planned behavior, not implemented functionality. Update status and verified findings as development proceeds.
 
----
+## 1. Final project decision
 
-## 1. The brief, restated
+Athena is a general AI assistant for everyday tasks. It selects a suitable model, handles documents intelligently, maintains relevant conversation context, and makes spending visible.
 
-Build a useful AI app or agent. Route every LLM call through Prune with one base URL. Prove three things: it does the job, it is cheap, and it is safe and reliable (no keys in code, failures cannot run up the bill).
+**Product promise: Ask Athena naturally. It chooses suitable AI capabilities, delivers the result, and shows what you spent.**
 
-Deliverables: working demo, cost per task, Prune's signed receipts as proof.
+Initial tasks: writing and rewriting, explanations, code assistance, PDF summaries, and questions about uploaded documents.
 
-| Criterion | Weight | How Sift earns it |
-|---|---|---|
-| Usefulness | 40% | Real maintainers drown in issues. We run on a real public repo with real issues and measure accuracy against the maintainers' own labels. |
-| Cost efficiency | 30% | Most issues are simple and many repeat. Tiered routing plus caching, measured against two baselines, using receipt numbers not estimates. |
-| Reliability and safety | 20% | Hard budget gate, retry and loop caps, injection defense, keys vaulted in Prune, secret scanning, human approval before anything is posted. |
-| Demo | 10% | 3 minute script built around live cost ticking down and a verified receipt. |
+This replaces the earlier Sift GitHub issue-triage plan. GitHub issue management is not required. Athena is not only a PDF router; document handling is one workflow within general chat.
 
-Prize: Best Use of Prune (12 months Pro for 1st, 6 months for 2nd). "Best use" means we should use more than the base URL: workload tags, template ids, optimize modes, cache behavior, receipt verification.
+Normally one selected model answers a request. Multiple agents do not debate every answer. Extra calls for routing, recovery, document processing, or session summaries must be justified and counted.
 
----
+## 2. Hackathon requirements
 
-## 2. What Sift does
+Track: **Ship It Lean: AI Apps on a Budget**, Prune / FORGE private brief supplied by the user.
 
-Sift watches a public GitHub repo's issues and, for each new issue:
+Build a useful AI app or agent; route every LLM call through Prune with one base URL; prove task completion, cost efficiency, provider keys outside the codebase, and failures that cannot cause uncontrolled spending.
 
-1. **Classifies** it: bug, feature, question, docs, spam, or needs-info.
-2. **Checks for duplicates** against recent open and closed issues.
-3. **Extracts structure**: affected component, version mentioned, reproduction present yes/no, severity guess.
-4. **Drafts a reply** for a maintainer, using templates for the easy cases.
-5. **Escalates** only hard or ambiguous issues to a stronger model for deeper reasoning.
-6. **Waits for human approval.** Sift never posts to GitHub on its own in v1.
+Required submission: working demo, cost per task, and Prune's signed receipts as proof.
 
-One **task** for cost accounting = one issue taken from ingest to a finished draft or a final "needs human" state.
+| Criterion | Weight | Evidence |
+|---|---:|---|
+| Usefulness | 40% | Working daily-task and document workflows; evaluated answers |
+| Cost efficiency | 30% | Suitable routing, relevant context, reused document preparation, measured costs |
+| Reliability and safety | 20% | Protected secrets, spending reservations, bounded attempts, safe recovery |
+| Demo | 10% | Repeatable workflow, receipts, measured results, controlled failure demonstration |
 
-### Non-goals (to protect scope)
-- No auto-posting, auto-closing or auto-labeling on GitHub.
-- No multi-repo tenancy, no auth beyond a single admin password.
-- No fine-tuning, no vector database beyond what is needed for duplicates.
-- No streaming responses (see Prune notes below).
+Best Use of Prune prizes stated in the brief: 12 months Pro for first place, 6 months for second. Winning and savings percentages are not guaranteed.
 
----
+## 3. Current status
 
-## 3. Prune: what we know and what we must verify
+At this update, planning documents exist; the Athena application has not been implemented or tested. The comparison directory contains PAL reference material and is not app source or a dependency.
 
-**Known from Prune's public pages and SDK docs:**
-- Managed gateway. Change the base URL to `https://api.withprune.com/v1` and keep the OpenAI-style SDK.
-- Fronts OpenAI, Anthropic, Gemini, Bedrock and OpenRouter.
-- Every response carries a signed receipt (cost, model, what fired). Receipts include cache hit info and cost saved. Live receipts carry `cost_without_prune_usd` and `cost_with_prune_usd`.
-- Python SDK (`prune-sdk`) offers `verify_receipt(receipt, public_key_url)` for Ed25519-signed receipts.
-- Workload tags via headers: `X-Prune-Workload` (packs: `structured_planning`, `structured_extraction`, `support_chat`, `agent_step`, `rag`, `batch`, `creative`), `X-Prune-Template-Id`, `X-Prune-Optimize` (`light` or `compact`, default off), auth via `X-Prune-Key`.
-- Anthropic streaming bypasses Prune in SDK 0.3.x. We use non-streaming OpenAI-compatible calls.
-- Free tier: 15,000 proxied requests per month. Our benchmark must fit inside this.
+prune.md contains earlier integration notes. Treat its model names, pricing, headers, examples, and assumptions as unverified until tested. This document takes precedence on product scope.
 
-**VERIFY in Phase 0 (do not assume):**
-1. Where exactly the receipt arrives (response header, body field, or separate fetch) and its full field list.
-2. Where the public key lives and whether `verify_receipt` works on the raw receipt as returned.
-3. How provider keys are added to the vault and how a request selects the provider/model.
-4. What Shield does on a prompt-injection input (block, flag, or annotate) and what the response looks like.
-5. Whether routing is automatic or driven by workload tags, and how to force a specific model for the baseline arm.
-6. Cache scope and semantics (exact match only, or semantic), TTL, and whether it can be bypassed per request.
-7. Rate limits and error shapes (429, 5xx) so our retry logic matches reality.
-8. Whether `X-Prune-Optimize` changes output quality on our tasks.
+## 4. Selected features
 
-Rule: the first person to find an answer writes it into section 14 (Findings log) the same day.
+| Feature | Agreed behavior |
+|---|---|
+| Chat and history | Save conversations and support follow-up questions |
+| Chat memory | Use relevant recent messages plus a saved summary; no promise of perfect recall |
+| Automatic model selection | Choose an economical or stronger suitable model based on requirements and capabilities |
+| Model explanation | Show a short selection reason and actual model served where available |
+| PDF summarization | Cover the document appropriately, not only a few retrieved pages |
+| Direct extraction and OCR | Extract usable PDF text directly; OCR scanned pages or images containing text |
+| Document indexing | Save extracted text, searchable sections, page references, and document version/hash |
+| Document questions | Retrieve relevant passages and answer with inspectable source references |
+| Budget-aware processing | Reserve allowance before paid calls; offer shorter output or smaller scope if necessary |
+| Costs and receipts | Record all calls and expose verification status |
+| Bounded recovery | Limit attempts, preserve completed work, and pause safely |
+| Failure timeline | Show steps, failures, actions taken, and unresolved costs |
+| Markdown checkpoint | Save a reviewable session handoff near the spending limit using reserved allowance |
 
----
+Emails, checklists, explanations, and summaries can be returned in chat. Rich artifact creation is not required for v1.
 
-## 4. System architecture
+## 5. Entire application flow
 
-```
-                         +------------------+
- GitHub REST API  -----> |  Ingestor        |  pulls issues, normalizes, dedupes ids
- (read only)             +--------+---------+
-                                  |
-                                  v
-                         +------------------+
-                         |  Task Queue      |  SQLite-backed, one row per task
-                         +--------+---------+
-                                  |
-                                  v
-        +-------------------------------------------------------+
-        |  Orchestrator (state machine per task)                |
-        |  sanitize -> classify -> dupes -> extract -> draft    |
-        |                 |            \                          |
-        |                 |             -> escalate (hard cases) |
-        +-----+-----------+-------------------+-----------------+
-              |                               |
-              v                               v
-     +----------------+              +------------------+
-     | Budget Gate    |<------------>| Loop Guard       |
-     | pre-call check |              | retry/cycle caps |
-     +-------+--------+              +------------------+
-             |
-             v
-     +----------------+        base URL: https://api.withprune.com/v1
-     |  llm.py        | -----> PRUNE  -----> OpenAI / Anthropic / Gemini ...
-     |  (only caller) | <----- response + signed receipt
-     +-------+--------+
-             |
-             v
-     +----------------+      +--------------------+
-     | Receipt Store  | ---> | Verifier + Reports |
-     | (SQLite+JSONL) |      | cost per task, etc |
-     +-------+--------+      +----------+---------+
-             |                          |
-             v                          v
-     +--------------------------------------------+
-     |  FastAPI  ->  React UI (queue, drafts,     |
-     |  approve, live cost panel, receipts view)  |
-     +--------------------------------------------+
+1. User starts or reopens a session and optionally sets a spending allowance.
+2. User sends a message and may attach a PDF or supported text image.
+3. Backend checks access, assigns a unique operation ID, and loads relevant conversation context.
+4. For a new document, validate type and limits, extract text page by page, selectively OCR when needed, and save an index with page references.
+5. Prepare relevant chat context or document passages. Whole-document summaries require broad coverage.
+6. Select a suitable model based on requested work, input size, capabilities, and evaluated policy.
+7. Check task limits and centrally reserve bounded call allowance. Offer a smaller request or pause if insufficient.
+8. Send the call through the shared Prune client. Never bypass Prune during outages.
+9. Perform practical task-specific checks; recover only within call, time, and spending limits.
+10. Save response, model information, recorded cost, receipt, verification status, and timeline events.
+11. Display answer first; expand details for model, cost, sources, and receipts.
+12. Save conversation state and memory; reuse document preparation for follow-ups.
+13. Near the spending threshold, create one checkpoint for a fixed message range and offer Markdown download.
+
+```text
+Message / PDF / supported text image
+                 |
+       Load relevant chat context
+                 |
+    Direct extraction / selective OCR
+                 |
+       Save and reuse document index
+                 |
+    Prepare relevant context for task
+                 |
+       Select suitable model
+                 |
+    Check limits and reserve allowance
+                 |
+       Shared client -> Prune -> model
+                 |
+    Check result / bounded recovery / pause
+                 |
+ Answer + sources + model + cost + receipt
+                 |
+      Save memory and checkpoint state
 ```
 
-### Design principles
-1. **One choke point.** `llm.py` is the only module allowed to import an LLM client. A CI check greps the repo for other client imports and for the string `api.openai.com` / `api.anthropic.com`. This is our proof of "every call through Prune".
-2. **Receipts are the source of truth for cost.** We never compute cost ourselves for the headline numbers. Our own estimate is used only by the budget gate, and we report how close it was.
-3. **Fail closed.** Budget exceeded, loop detected, Shield flagged, or receipt missing: the task stops and moves to `needs_human`. It never retries forever and never spends past the cap.
-4. **Untrusted input everywhere.** Issue text is attacker-controlled. It is never concatenated into a system prompt, and model output never triggers an action without a human.
-5. **Deterministic where possible.** Cheap rules (empty body, known bot, exact title match) run before any LLM call. The cheapest call is the one we never make.
+## 6. Routing policy
 
----
+- Begin with two verified model options: economical and stronger. Expand only if evaluation justifies it.
+- Start with deterministic rules for obvious cases. Add a small routing classifier only when its benefit justifies its cost.
+- Consider task type, input size, context capacity, required capabilities, and user constraints. Length or keywords alone do not establish difficulty.
+- Simple rewriting may use an economical model. Difficult analysis may go directly to a stronger model; not every request must try both.
+- Record requested and actual served models separately. Verify how Prune routing interacts with Athena's choice and model-forcing controls.
+- Live information requires an appropriate retrieval tool, not merely a stronger model. Live web research is outside initial scope.
+- Do not run an expensive judge on every answer. There is no universal automatic correctness test for general chat.
+- Side-by-side answer comparison is optional evaluation/demo functionality only. It adds cost and does not automatically declare the stronger model better.
 
-## 5. Tech stack
+## 7. Document handling
 
-| Layer | Choice | Why |
-|---|---|---|
-| Backend | Python 3.11, FastAPI, Pydantic v2 | Fast to build, Prune SDK is Python |
-| LLM client | `openai` SDK pointed at Prune (or `prune-sdk` wrapper) | One base URL, non-streaming |
-| Queue/DB | SQLite (WAL mode) + JSONL receipt archive | Zero ops, easy to ship raw receipts |
-| Duplicate search | Start with normalized title + TF-IDF/BM25 shortlist, LLM only to confirm top-k | Keeps embedding costs out of the loop; revisit if accuracy is low |
-| Frontend | React + Vite + Tailwind | Fast, familiar |
-| Charts | Recharts | Cost-over-time and baseline comparison |
-| Secrets | `.env` holds only the Prune key; gitleaks pre-commit and CI | Proves keys are out of code |
-| CI | GitHub Actions: lint, tests, gitleaks, one-choke-point check | Visible in repo for judges |
-| Deploy | Single Docker image; backend serves built frontend | One link for the demo |
+### Extraction and OCR
 
----
+- Digital PDFs with usable text: extract directly; no OCR needed.
+- Scanned pages: use OCR. A page can look like text while being only a picture.
+- Mixed PDFs: decide per page. Poor existing text layers may need fallback.
+- OCR reads writing. It does not itself find relevant passages or answer questions.
+- Start with text PDFs, then clean scans. Handwriting, complex tables, charts, and general photo understanding are deferred.
+- Preserve original page references. OCR can misread amounts, dates, and names; sources must remain inspectable.
 
-## 6. Pipeline in detail
+### Indexing and retrieval
 
-### 6.1 Task state machine
+- Store extracted text and searchable sections, not only a summary; a summary omits details.
+- Start with local keyword/BM25-style retrieval. Add embeddings only if evaluation justifies them, and verify Prune support for any hosted embedding calls.
+- Specific questions retrieve relevant sections. Whole-document summaries require broader coverage or bounded section summaries plus synthesis.
+- Save document hashes/versions and reuse unchanged preparation. OCR, indexing, and storage still consume resources.
+- Keep user/session ownership on files and search results. Never retrieve another user's content.
+- If evidence is missing, say so rather than inventing a document answer.
 
+## 8. Conversation memory and Markdown checkpoint
+
+Keep original messages plus a summary with an explicit last-included message pointer. Use relevant recent messages and summary within context limits. Distinguish confirmed decisions, completed work, proposals, and open questions. Memory summaries are lossy.
+
+Checkpoint implementation:
+1. Reserve a bounded summary allowance early, within session and account limits.
+2. Check usage before admitting large calls and after completed calls. An initial 80% trigger is configurable, not a fixed product guarantee.
+3. Snapshot the message endpoint and create one durable job; enforce uniqueness on session plus message endpoint.
+4. Use the cheapest suitable verified model through Prune. Prefer previous summary plus new messages, with bounded batches when needed.
+5. Validate structured fields: goal, confirmed decisions, completed work, next steps, open questions, and references.
+6. Render Markdown using code; save privately and expose an authenticated download.
+7. If allowance is insufficient or generation fails, provide a labeled basic transcript export without another AI call. Preserve uncertain billing states.
+
+Show coverage and whether newer messages are excluded. Exclude credentials and allow user review. Do not silently export sensitive content. Continuing from a summary does not restore deleted files or reset spending limits.
+
+## 9. Spending and accounting
+
+Pay-as-you-go is billing; a budget is a maximum spending allowance, not an upfront payment. The API account owner is charged. Charging end users is outside v1.
+
+- Enforce task, session, and application/account limits.
+- Centrally and atomically reserve allowance before each paid call. Concurrent requests must not spend the same remaining allowance.
+- Bound input, output, allowed models, and attempts. Use conservative bounds based on verified pricing where supported; estimates alone are not strict spending guarantees.
+- Use integer monetary micro-units or database decimals, not binary floats.
+- Reconcile against returned cost information and receipt verification. Unknown charges stay pending, not zero.
+- Count routing, paid document processing, hosted embeddings if used, repairs, escalation, and checkpoint calls. Report their attribution clearly.
+- Configure and test Prune spending controls as an additional layer.
+- Separate actual recorded cost, Prune's estimated counterfactual savings, and measured baseline differences.
+- Zero upstream cost on a cache hit does not imply zero service or infrastructure cost.
+
+If allowance is insufficient, select relevant context, offer shorter output or smaller scope, or pause. Never silently remove essential instructions/evidence. Shorter output does not erase input costs already incurred.
+
+## 10. Safety and secrets
+
+- Provider keys stay in Prune's vault after verifying the setup flow.
+- Prune credentials stay in backend environment/deployment secret settings, never frontend bundles, prompts, Git, screenshots, or logs.
+- Ignore .env; commit only placeholder names in .env.example.
+- Secret scanning runs before commits and in CI. Revoke exposed credentials; deleting visible text is insufficient.
+- Every LLM call uses one shared module and configured Prune base URL: normal answers, routing, repair, summaries, and evaluation. No direct-provider fallback.
+- Enforce the shared path through review, CI checks, and runtime call records; text scanning alone is incomplete proof.
+- Uploaded and retrieved text is untrusted data, separate from application instructions. It cannot authorize tools or external actions.
+- Do not put credentials in model context. Initial outputs are answers/drafts, not autonomous sends, purchases, or code execution.
+- Bound upload size, page count, extraction time, and output size.
+- Authenticate resource access and isolate user files, search results, conversations, checkpoints, and receipts.
+- Do not log raw sensitive content routinely. Protect public demos with access/rate controls and server-side spending caps.
+
+## 11. Reliability and failure handling
+
+Bounded recovery means limited attempts to recover. Safe pause means preserving completed work and clearly explaining why continuation stopped. One paused task does not require stopping the entire app.
+
+Use task-specific planned-call, recovery, time, and spending limits. A three-call limit was an example starting policy, not a universal requirement for every workflow. Include automatic SDK retries and gateway fallbacks in attempt accounting; avoid nested retry loops.
+
+| Failure | Behavior |
+|---|---|
+| Invalid key or invalid request | Stop; configuration/input correction required |
+| Budget rejection | Pause without another paid attempt |
+| Temporary rate limit | Respect retry timing; bounded backoff if allowance permits |
+| Provider outage | Bounded suitable fallback through Prune if supported, otherwise pause |
+| Invalid structured output | Bounded repair only if useful and affordable |
+| Ambiguous timeout | Preserve pending allowance, record uncertainty, reconcile before blindly resending |
+| Missing or invalid receipt | Mark unverified; stop automatic paid continuation; do not regenerate just for a receipt |
+| Worker interruption | Reuse saved stages; reconcile in-flight paid calls before replay |
+
+Additional controls:
+- Unique operation IDs prevent duplicate submissions from blindly duplicating work.
+- Persist stages, results, and events; reuse extraction/indexing after restart.
+- Do not promise exactly-once provider billing after ambiguous failures without verified gateway support.
+- A circuit breaker pauses affected calls after repeated service failures and permits controlled recovery checks.
+- Admin stop control blocks new calls; it cannot guarantee cancellation of requests already accepted by providers.
+- Resume never resets account limits or discards pending charges.
+- Failure timeline records time, stage, safe explanation, call IDs, recovery actions, and available cost status.
+
+Example timeline: file saved -> extraction completed -> model selected -> allowance reserved -> timeout -> charge pending -> safely paused.
+
+## 12. Technical architecture
+
+Initial stack: **Python, FastAPI, Pydantic, React, one shared Prune client**.
+
+A single-process prototype can use SQLite and saved jobs. If committing to shared/distributed workers, use PostgreSQL for durable shared state and shared private file storage.
+
+Distributed document processing is an optional extension, not a prerequisite. Redis/Celery with a small worker pool can process OCR and indexing after local workflows work. Use a supported Linux/container environment rather than assuming native Windows support. More workers increase capacity but add infrastructure cost and remain subject to provider limits.
+
+Suggested layout:
+
+```text
+backend/
+  app/
+    main.py
+    api/
+    services/
+      llm.py
+      routing.py
+      budget.py
+      documents.py
+      retrieval.py
+      memory.py
+      checkpoints.py
+      receipts.py
+    models/
+    db.py
+  tests/
+frontend/
+config/
+proof/
+.env.example
+README.md
 ```
-ingested -> sanitized -> classified -> (dupe_checked) -> extracted -> drafted -> awaiting_approval -> approved|rejected
-                \             \               \              \            \
-                 \-------------\---------------\--------------\------------\--> needs_human (terminal, with reason)
-                                                                          \--> blocked_by_shield (terminal)
-                                                                          \--> budget_stopped (terminal)
-```
 
-Every transition is logged with timestamp, cause, and the receipt ids that led to it.
+Entities: access identities/users, sessions, messages, tasks, documents, searchable chunks, AI calls, receipts, spending reservations, task events, and checkpoints. Exact schemas remain to be defined.
 
-### 6.2 Stages
-
-| Stage | What happens | Model tier | Prune workload tag |
-|---|---|---|---|
-| Sanitize | Strip HTML comments and hidden text, cap length, wrap content in clearly delimited data block, run local injection heuristics | none (rules) | none |
-| Pre-filter | Rules for obvious spam, empty issues, bot-authored, exact-title duplicates | none (rules) | none |
-| Classify | Label + confidence in strict JSON schema | small/cheap | `support_chat` |
-| Dupe check | Shortlist top-k by BM25, LLM confirms duplicate with cited issue number | small/cheap | `structured_extraction` |
-| Extract | Component, version, repro present, severity | small/cheap | `structured_extraction` |
-| Template reply | If label is question/docs and a template matches, fill template | small/cheap | `support_chat` + `X-Prune-Template-Id` |
-| Escalate | Only if confidence < threshold, labels conflict, or severity high | mid/strong | `agent_step` |
-| Draft reply | Compose maintainer-ready draft from structured fields | mid | `agent_step` |
-
-Escalation threshold and model choices live in `config/policy.yaml` so the benchmark can sweep them.
-
-### 6.3 Output contract
-
-Every LLM stage returns JSON validated by Pydantic. On validation failure: one repair retry with the validation error, then `needs_human`. We count repair retries in the loop guard.
-
-### 6.4 Prompt structure (injection hygiene)
-- System prompt is static, versioned in `prompts/`, and contains no issue text.
-- Issue content goes in the user turn inside explicit delimiters and is labeled as untrusted data.
-- The model is told to treat the delimited block as data and never as instructions, and the output schema has no field that can carry an action.
-- Draft replies are scanned for URLs, secrets-looking strings and mentions before display.
-
----
-
-## 7. Cost control design
-
-### 7.1 Budget Gate (before every call)
-```
-allow(call) iff
-    task_spent + est_cost(call) <= TASK_CAP         (e.g. $0.01)
-    run_spent  + est_cost(call) <= RUN_CAP          (e.g. $2.00)
-    hour_spent + est_cost(call) <= HOUR_CAP
-```
-- `est_cost` uses a local price table and token estimate (tiktoken or char heuristic).
-- After the call, we replace the estimate with the real number from the receipt, log the estimate error, and update running totals.
-- States per scope: `active -> warned (80%) -> downgraded (force cheap tier) -> stopped (hard cap)`. Same idea as published agent-budget designs.
-- A global **kill switch** (env flag and UI button) halts all calls instantly.
-
-### 7.2 Loop Guard
-- Max 2 retries per stage, max 6 LLM calls per task, max 1 escalation per task.
-- Detects repeated identical requests inside one task (hash of stage + input) and stops.
-- Exponential backoff with jitter on 429 and 5xx, then fallback tier once, then `needs_human`.
-- Circuit breaker: if more than N failures in M seconds across tasks, pause the queue and surface an alert.
-
-### 7.3 Where savings come from (to be measured, not promised)
-1. Rules before models (spam, empties, exact repeats).
-2. Cheap tier for most stages, strong tier only on escalation.
-3. Prune cache on repeats and near repeats.
-4. Prompt compaction (`X-Prune-Optimize`) if it does not hurt accuracy.
-5. Summarize very long issues once, then reuse the summary across stages.
-
----
-
-## 8. Safety design
-
-| Threat | Control | Evidence for judges |
-|---|---|---|
-| Provider keys leak in code | Keys only in Prune vault; repo has Prune key only in `.env`; gitleaks pre-commit + CI | Clean gitleaks run, `.env.example`, README note |
-| Prune key leak | Key read from env, never logged, redacted in logs, rotated before submission | Log redaction test |
-| Prompt injection via issue body | Delimited data block, local heuristics, Prune Shield, output schema with no action fields, human approval | Injection test set with pass/fail table |
-| Runaway spend | Budget gate, loop guard, circuit breaker, kill switch | Live demo of cap firing |
-| Provider outage | Retries with cap, fallback tier, `needs_human` terminal state | Failure-injection test |
-| Bad draft posted | No auto-post; approval required; draft scanner | UI flow |
-| PII in issues | Only public repos; no private data stored beyond issue text; receipts store metadata not bodies | README data policy |
-| Receipt forgery or missing receipt | Every call must have a verifiable receipt or task stops | Verify script, stored public key |
-
-### Injection test set (minimum 15 cases)
-Direct override, hidden HTML comment instructions, markdown link exfiltration, "post my token", role-play jailbreaks, instructions in a code block, instructions in a quoted reply, unicode tricks, very long padding then instruction, multilingual instruction, instruction asking to disable the budget cap, instruction asking to reveal the system prompt. Record outcome per case: blocked by Shield, blocked by us, or passed through harmlessly.
-
----
-
-## 9. Data model (SQLite)
-
-```
-issues(id PK, repo, number, title, body_hash, author, created_at, raw_json_path)
-tasks(id PK, issue_id FK, status, reason, created_at, finished_at,
-      final_label, final_confidence, draft_text, approved_by, approved_at)
-llm_calls(id PK, task_id FK, stage, workload_tag, template_id, model_requested,
-          model_served, input_tokens, output_tokens, latency_ms, status,
-          est_cost_usd, receipt_id, cache_hit, retry_index, created_at)
-receipts(id PK, llm_call_id FK, raw_json, signature_valid BOOL,
-         cost_with_prune_usd, cost_without_prune_usd, cost_saved_usd, fired_json)
-budget_events(id PK, scope, scope_key, event, spent_usd, cap_usd, created_at)
-bench_runs(id PK, arm, started_at, finished_at, config_json)
-bench_results(run_id FK, task_id FK, predicted_label, true_label, cost_usd, calls, correct BOOL)
-injection_tests(id PK, case_name, payload_path, outcome, notes)
-```
-Receipts are also appended to `receipts/YYYYMMDD.jsonl` so we can ship the raw files.
-
----
-
-## 10. API surface (FastAPI)
+Proposed APIs, not implemented:
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/ingest` | Pull N issues from the configured repo |
-| GET | `/tasks` | Queue with status, label, cost |
-| GET | `/tasks/{id}` | Full trace: stages, calls, receipts, draft |
-| POST | `/tasks/{id}/approve` | Approve (optionally edited) draft |
-| POST | `/tasks/{id}/reject` | Reject with reason |
-| GET | `/cost/summary` | Totals, cost per task, cache hit rate, saved |
-| GET | `/cost/timeseries` | For live chart |
-| GET | `/receipts/{id}` | Raw receipt + verification result |
-| POST | `/receipts/verify-all` | Re-verify every stored receipt |
-| POST | `/admin/kill` | Kill switch on/off |
-| POST | `/bench/run` | Run a benchmark arm |
-| GET | `/bench/report` | Comparison tables and chart data |
-| POST | `/safety/run-injection-suite` | Run the injection cases, return table |
+| POST | /sessions | Start session and optional allowance |
+| GET | /sessions/{id} | History and status |
+| POST | /sessions/{id}/messages | Submit uniquely identified task |
+| POST | /sessions/{id}/documents | Upload and enqueue preparation |
+| GET | /documents/{id} | Processing state |
+| GET | /tasks/{id} | Result, calls, and timeline |
+| GET | /calls/{id}/receipt | Receipt and verification |
+| GET | /sessions/{id}/cost | Spent, reserved, pending, remaining |
+| GET | /sessions/{id}/checkpoints/{checkpoint_id}/download | Private Markdown export |
+| POST | /tasks/{id}/resume | Controlled explicit resume |
+| POST | /admin/pause | Admin-only stop for new calls |
 
----
+Freeze task/result JSON before separate frontend/backend work. Distinguish queued, running, completed, paused, failed, and pending-reconciliation states.
 
-## 11. Benchmark and proof plan
+## 13. Implementation roadmap
 
-### 11.1 Dataset
-- 250 issues from one active public repo, chosen for volume and clear license. Pull via GitHub API.
-- Ground truth for classification = the maintainers' own labels, mapped to our six classes. Hand-review 50 to fix mapping errors.
-- Mix: natural distribution plus 30 added near-duplicates and 15 injection cases kept in a separate suite.
-- Freeze the dataset and its hash. Same input for every arm.
-
-### 11.2 Arms
-| Arm | Description |
-|---|---|
-| A. Naive | Every stage to a premium model, direct to provider, no cache. (This arm needs a provider key. Run it from a separate script outside the app repo, key from a local env var, never committed. Alternatively route it through Prune with routing and cache disabled, if VERIFY #5 allows.) |
-| B. DIY | Cheap/strong tiering and a simple local exact-match cache we wrote, direct to provider |
-| C. Sift on Prune | Full pipeline through Prune with workload tags and cache |
-| D. Sift on Prune, cold vs warm | Run C twice to show the cache effect separately |
-
-### 11.3 Metrics
-- **Cost per task**: sum of receipt `cost_with_prune_usd` per task (arm C), provider usage-based cost for A and B.
-- **Total cost** for the 250 tasks, and p50/p95 cost per task.
-- **Cache hit rate** and cost saved from receipts.
-- **Accuracy**: macro-F1 and accuracy vs maintainer labels. Quality gate: arm C must be within 2 points of arm A, otherwise the savings claim is not valid and we tune the policy.
-- **Reliability**: completion rate, `needs_human` rate and reasons, retry counts, p95 latency.
-- **Safety**: injection suite outcomes, secret scan result.
-- **Estimate error**: budget-gate estimate vs receipt actual.
-
-### 11.4 Proof package (what we submit)
-1. `proof/receipts/` raw signed receipts for the benchmark run.
-2. `proof/verify.sh` (or `python -m sift.verify proof/receipts`) that checks every signature and recomputes totals.
-3. `proof/report.md` with the tables and chart images, generated by script, not typed by hand.
-4. A short note on methodology and limits, including that the dataset is one repo.
-
----
-
-## 12. Repo layout
-
-```
-sift/
-  README.md                 # problem, results table, how to run, proof links
-  memory.md                 # this file
-  .env.example
-  .gitleaks.toml
-  pyproject.toml
-  config/
-    policy.yaml             # tiers, thresholds, caps, model names
-    prices.yaml             # local price table for the budget gate
-  prompts/                  # versioned prompts and templates
-  sift/
-    llm.py                  # THE ONLY LLM CALLER
-    receipts.py             # parse, store, verify
-    budget.py               # gate and scopes
-    loopguard.py
-    sanitize.py
-    pipeline/
-      orchestrator.py
-      classify.py
-      dupes.py
-      extract.py
-      draft.py
-      escalate.py
-    ingest/github.py
-    api/
-      main.py
-      routes_*.py
-    db.py
-    bench/
-      dataset.py
-      arms.py
-      run.py
-      report.py
-    safety/
-      injection_cases/
-      run_suite.py
-  web/                      # React app
-  tests/
-  proof/                    # generated: receipts, verify script, report
-  scripts/
-    check_single_caller.py  # CI: fails if any other module imports an LLM client
-    demo_seed.py
-  Dockerfile
-  .github/workflows/ci.yml
-```
-
----
-
-## 13. Phases and team plan
-
-### Roles (assign names at kickoff)
-
-| Role | Owner | Primary responsibility |
+| Phase | Work | Exit criterion |
 |---|---|---|
-| **A. Platform lead** | ______ | Prune integration, `llm.py`, receipts, budget gate, loop guard, CI checks |
-| **B. Pipeline/ML** | ______ | Ingestor, sanitize, prompts, classify/dupes/extract/draft/escalate, accuracy tuning |
-| **C. Frontend/UX** | ______ | React app, live cost panel, approval flow, receipts viewer, charts |
-| **D. Benchmark, safety, demo** | ______ | Dataset, arms, reports, injection suite, README, demo script and video |
+| 0 | Verify Prune auth, models, routing controls, costs, receipt/signature flow, errors | Real call works and receipt verifies |
+| 1 | Minimal chat, database, UI, shared client, basic controls and call records | Saved chat returns answer, model, cost, receipt and survives refresh |
+| 2 | Reservations, bounded attempts, duplicates, timeline, pause | Duplicate submissions and exhausted allowance handled correctly |
+| 3 | Two model tiers, rules, short explanations, served-model tracking | Evaluated routing reflects task needs |
+| 4 | Text PDFs, saved index, retrieval, citations, broad summaries | Follow-up questions reuse document preparation |
+| 5 | Selective OCR, incremental memory, Markdown checkpoint | Supported scans work and checkpoint coverage is explicit |
+| 6 | Evaluation, failure tests, reports, deployment, rehearsal | Reproducible evidence and reliable demo |
 
-Rules: A and B pair on the first integration. D owns the truth of the numbers and may veto any claim that the data does not support. Everyone reviews each other's PRs within a few hours. Small PRs, main always runnable.
+First milestone: **one saved chat request through Prune with answer, actual model information where available, recorded cost, and verifiable receipt**.
 
-Time estimates are in working hours per person and assume roughly 5 to 7 focused days total. If the deadline is shorter, cut by the priority tags: **P0 must ship, P1 should ship, P2 only if time remains.**
+Suggested four-person ownership, to confirm with team:
+- A: shared client, receipts, model routing.
+- B: database, budgets, recovery, memory/checkpoints.
+- C: extraction, retrieval, OCR.
+- D: frontend, integration, demo packaging.
 
----
+Everyone contributes evaluation cases and reviews shared contracts. Add distributed workers only after reliable local document processing, if time permits.
 
-### Phase 0: Spike and setup (about 0.5 day) **P0**
+## 14. Evaluation and proof
 
-Goal: prove the pipe, answer every VERIFY item, agree on contracts.
+Use a fixed mixed set of writing, explanation, code, document-question, and summarization tasks. Begin small; target 100-150 tasks if time/allowance permit. This is planned, not achieved.
 
-| Who | Tasks |
+Compare economical-only, stronger-only, and Athena routing policies. All benchmark LLM calls still go through Prune. Verify model forcing and cache controls; disclose limitations. Separate development examples from held-out final evaluation.
+
+Measure total cost including every paid stage, completion, task-specific quality, latency, escalation, failures, and receipt coverage. Use objective checks where possible and human review for subjective tasks. Separate first-run from repeated-input results and model-selection effects from caching where measurable.
+
+A valid signature authenticates the signed record; it does not establish answer correctness. Missing receipts and uncertain costs must be visible.
+
+Test: duplicate submission, concurrent reservations, exhausted allowance, rate limit, invalid key, timeout, malformed output, missing/altered receipt, interrupted worker, cross-user resource access, and malicious instructions inside documents.
+
+Proof package: safely stored raw receipts, verification command, generated cost/quality report, methodology and limits. No invented savings claims.
+
+## 15. Demo and deferred scope
+
+Demo: simple rewrite routed economically -> justified stronger-model task -> document answer with cited page -> recorded cost and verified receipt -> controlled budget stop or clearly labeled simulated failure -> saved progress/checkpoint if stable. Prepare a backup recording and distinguish replay from live data.
+
+Outside required v1 scope: GitHub issue triage, always-on answer comparison, debating agents, expensive judging of every answer, live web research, arbitrary generated-code execution, autonomous external actions, end-user billing, complex image/chart understanding, and large microservice deployments.
+
+Possible later extensions: calculator/predefined data-analysis tools, richer downloadable outputs, editable saved preferences, sensitive-information preview, more providers, and distributed document workers. Do not add before core correctness, safety, and evidence work.
+
+## 16. Prune connection things to test
+
+| Question | Status |
 |---|---|
-| A | Create Prune account and key. Add one provider key to the vault. Make one call through the base URL. Capture raw request and response including receipt. Answer VERIFY 1, 2, 3, 6, 7. |
-| B | Pick the repo. Pull 50 sample issues. Draft the label mapping and the six-class definitions. |
-| C | Scaffold React + Vite + Tailwind, routing, layout shell, mock data for queue and cost panel. |
-| D | Set up repo, CI skeleton, gitleaks, `.env.example`, `check_single_caller.py`. Answer VERIFY 4 (Shield) and 5, 8 with small experiments. Start the Findings log. |
+| Authentication and vaulted provider-key setup | VERIFY |
+| Available models and current prices | VERIFY |
+| Actual receipt/cost fields, signature payload, public key | VERIFY |
+| Model forcing versus Prune routing | VERIFY |
+| SDK/gateway retries and fallback cost visibility | VERIFY |
+| Timeout reconciliation and idempotency support | VERIFY |
+| Spending-cap and concurrent-call behavior | VERIFY |
+| Cache scope, controls, bypass, and billing | VERIFY |
+| Structured output and non-streaming behavior | VERIFY |
+| Hosted embeddings if later used | VERIFY |
+| Shield and optional privacy behavior | VERIFY |
 
-**Exit criteria:** one call through Prune returns a receipt that `verify_receipt` accepts; Shield behavior on an obvious injection is documented; repo CI is green; roles and contracts below are agreed.
+References: https://www.withprune.com/docs/how-it-works ; https://www.withprune.com/docs/security ; https://pypi.org/project/prune-sdk/
 
-**Contracts to freeze in Phase 0:**
-- `llm.call(stage, messages, schema, workload, template_id=None, tier) -> LLMResult(parsed, raw, receipt, usage)`
-- Task JSON shape returned by the API
-- `policy.yaml` schema
+Record dated experiments, safe sample responses, configurations, and limitations here. Never record keys. Public documentation is guidance, not proof of the deployed behavior.
 
----
+## 17. Definition of done
 
-### Phase 1: Thin vertical slice (about 1.5 days) **P0**
+- [ ] Saved chat and follow-ups work with relevant context.
+- [ ] Routing is evaluated and actual model behavior is visible.
+- [ ] Text PDF extraction, reusable search, citations, and summaries work.
+- [ ] Selective OCR works on supported clean scans.
+- [ ] All LLM calls go through Prune; no direct-provider fallback.
+- [ ] Secrets, access isolation, and secret scanning are verified.
+- [ ] Reservations, bounded attempts, duplicate protection, and pause are tested.
+- [ ] Uncertain charges remain pending, not zero.
+- [ ] Call costs and receipts are recorded and signatures verified.
+- [ ] Markdown checkpoint, coverage display, and no-AI export work.
+- [ ] Report includes measured cost, quality, and limitations.
+- [ ] Demo access/spending are controlled; rehearsal and backup recording are complete.
 
-Goal: one issue goes end to end, with a real receipt, visible in the UI.
-
-| Who | Tasks |
-|---|---|
-| A | `llm.py` with retries, timeouts, error mapping. `receipts.py` store plus verify. Basic budget gate (task cap only). SQLite schema and migrations. |
-| B | GitHub ingestor. `sanitize.py`. Classify stage with Pydantic schema and prompt v1. Orchestrator with states ingested to classified to drafted (simple draft). |
-| C | Queue page, task detail page showing stages and receipts, live cost panel wired to `/cost/summary`. |
-| D | Dataset v0 (100 issues) with mapped labels. Benchmark runner skeleton. Unit tests for budget and receipts. Draft README outline. |
-
-**Exit criteria:** ingest 20 issues, each ends with a label, a draft and verified receipts; cost per task visible in UI; every call goes through `llm.py` and CI proves it.
-
----
-
-### Phase 2: Full pipeline (about 1.5 days) **P0**
-
-Goal: all stages, escalation, approval flow, real cost routing.
-
-| Who | Tasks |
-|---|---|
-| A | Tiering and policy loader. Workload tags and template ids wired per stage. Run and hour caps, warned and downgraded states. Loop guard with retry caps and circuit breaker. Kill switch. |
-| B | Dupe check (BM25 shortlist plus LLM confirm). Extract stage. Escalation rules and confidence thresholds. Template replies. Draft quality prompt iterations. Repair-retry on schema failure. |
-| C | Approval, edit and reject UI. Reason display for `needs_human`, `budget_stopped`, `blocked_by_shield`. Receipts viewer with verification badge. Kill switch button. |
-| D | Dataset v1 (250 frozen, hashed). Arms A, B, C implemented. First benchmark pass. Accuracy tracking. Start injection case library (15+). |
-
-**Exit criteria:** full 250-issue run completes with fewer than 5% unexplained failures; first cost and accuracy numbers exist for all arms; approval flow works end to end.
-
----
-
-### Phase 3: Harden, tune, prove (about 1.5 days) **P0/P1**
-
-Goal: the numbers we will defend, and the safety evidence.
-
-| Who | Tasks |
-|---|---|
-| A | Failure injection (simulated 429, 5xx, timeouts, malformed JSON) with automated tests. Receipt-missing handling. Estimate-vs-actual reporting. Log redaction. Rotate keys. |
-| B | Policy sweep: thresholds and model choices against cost and accuracy; pick the final policy and freeze it. Try `X-Prune-Optimize` light/compact and keep only if accuracy holds. Prompt hardening against injections. |
-| C | Benchmark report page: baseline vs Prune chart, cache hit chart, per-stage cost breakdown, injection results table. Mobile and empty states. Demo mode with seeded data. |
-| D | Final benchmark with frozen policy, cold and warm runs. Run injection suite and record outcomes. Generate `proof/` package and `verify` script. Write limits and methodology. |
-
-**Exit criteria:** final report generated by script; accuracy within the 2 point gate; all receipts verify; injection table complete; failure-injection tests pass.
-
----
-
-### Phase 4: Package and demo (about 1 day) **P0**
-
-Goal: a submission that is easy to judge.
-
-| Who | Tasks |
-|---|---|
-| A | Dockerfile, one-command run, deploy to a public URL, health check, final key rotation. Freeze main. |
-| B | Bug fixes only. Prepare 5 ideal live demo issues, including one duplicate and one injection. |
-| C | Final polish, loading and error states, record screen captures for the video. |
-| D | README with results table up top, architecture diagram, proof instructions. Demo script, two full rehearsals, backup video recorded. Submission form. |
-
-**Exit criteria:** fresh clone runs in under 10 minutes using README alone; demo link works; backup video exists; everyone has rehearsed their part.
-
-**Feature freeze at the start of Phase 4.** Nothing new after that except fixes.
-
----
-
-### Stretch goals (only after all P0 and P1 are done) **P2**
-- GitHub webhook for live ingestion instead of polling.
-- Second repo to show generality.
-- Per-label cost dashboard and a "what would this cost at 10k issues per month" projection, clearly labeled as a projection.
-- Maintainer feedback loop: approved edits feed few-shot examples into prompts.
-- Cost-aware autopilot: auto-approve only template replies above a very high confidence, behind a flag, off by default.
-
----
-
-## 14. Findings log (fill in during Phase 0 onward)
-
-| Date | Who | Question | Finding |
-|---|---|---|---|
-| | | Receipt location and fields | |
-| | | Public key and verify flow | |
-| | | Provider vault setup | |
-| | | Shield behavior on injection | |
-| | | Routing: automatic vs tag-driven; how to force a model | |
-| | | Cache semantics and bypass | |
-| | | Rate limits and error shapes | |
-| | | Effect of Optimize modes | |
-
----
-
-## 15. Demo script (3 minutes)
-
-| Time | Beat | What the screen shows |
-|---|---|---|
-| 0:00 | Problem | One sentence: maintainers drown, AI apps burn money. Show a real repo's issue queue. |
-| 0:20 | Live triage | Run 10 fresh issues. Labels, dupes and drafts appear. Cost panel ticks in fractions of a cent. |
-| 1:00 | Repeat is free | Re-run a duplicate. Receipt shows cache hit and zero upstream cost. |
-| 1:25 | Proof | Open one receipt, click verify, signature valid. Show `cost_without_prune_usd` vs `cost_with_prune_usd`. |
-| 1:50 | Benchmark | Chart: Naive vs DIY vs Prune, cost per task and accuracy side by side. State the real measured numbers. |
-| 2:20 | Safety | Paste an injection issue: blocked. Trigger a loop: cap fires, task stops, bill flat. Point at clean gitleaks run. |
-| 2:50 | Close | Cost per task, accuracy, and "every call through one base URL". |
-
-Backup plan: pre-recorded video of the same flow and seeded data mode in case the network fails.
-
----
-
-## 16. Risk register
-
-| Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|
-| Prune behaves differently than docs suggest | Medium | High | Phase 0 spike; Findings log; keep `llm.py` thin so adapting is cheap |
-| Receipts missing on some paths (e.g. errors, cache) | Medium | High | Treat missing receipt as failure; test every path in Phase 0 |
-| Savings smaller than hoped | Medium | Medium | Honest reporting; the accuracy gate protects credibility; emphasize safety and proof |
-| Accuracy drops when using cheap tiers | Medium | High | Policy sweep in Phase 3; escalation on low confidence |
-| Free tier request cap hit during benchmarks | Low | Medium | Count requests per run (about 250 tasks times 4 to 6 calls times several runs); keep total well under 15,000 |
-| Provider rate limits during runs | Medium | Medium | Concurrency limit, backoff, resume-able runs |
-| Scope creep | High | High | Non-goals list, P0/P1/P2 tags, feature freeze |
-| Demo network failure | Medium | High | Seeded mode and backup video |
-| Teammate unavailable | Medium | Medium | Every module has a named backup owner (A/B pair, C/D pair) |
-| Dataset license or ToS issue | Low | Medium | Public repo, issue text only, cite the repo, store metadata and hashes where possible |
-
----
-
-## 17. Definition of done (submission checklist)
-
-- [ ] Working public demo link and backup video
-- [ ] Every LLM call goes through `llm.py` to the Prune base URL; CI check passes
-- [ ] No provider keys in the repo or history; gitleaks clean
-- [ ] Benchmark of 250 issues across all arms, accuracy gate met
-- [ ] Cost per task reported from receipt data, with p50 and p95
-- [ ] `proof/` folder with raw receipts and a working verify command
-- [ ] Injection suite results table (15+ cases)
-- [ ] Failure-injection tests pass; budget cap and kill switch demonstrated
-- [ ] README: results first, architecture diagram, run instructions, limits and honest caveats
-- [ ] Demo rehearsed twice by the person presenting
-
----
-
-## 18. Working agreements
-
-- Branches off `main`, small PRs, at least one review, CI must pass.
-- Daily 15 minute sync: yesterday, today, blockers. Update section 14 and tick boxes here.
-- Numbers in the README come only from generated reports. No hand-typed claims.
-- If a claim cannot be backed by a receipt or a test, we do not make it.
-- Decisions that change scope get written into this file with the date and the reason.
+Decision log: 2026-10-31 - replaced the earlier Sift scope with the user-selected general Athena assistant. This is a planning update; no functionality is claimed as implemented.
