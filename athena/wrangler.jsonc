@@ -23,8 +23,9 @@
     "DEFAULT_BUDGET_USD": "0.25",
     "PER_CALL_CAP_USD": "0.05",
     "MAX_WORKSPACE_BUDGET_USD": "1.00",
-    "SESSION_LIMIT_PER_HOUR": "5",
+    "SESSION_LIMIT_PER_HOUR": "30",
     "RETENTION_DAYS": "30",
+    "LLM_PROVIDER": "groq",
     "MODEL_TIERS": "{\"economy\":{\"model\":\"gemini/gemini-3.5-flash\",\"inPerM\":0.3,\"outPerM\":2.5,\"minOutputTokens\":2000},\"standard\":{\"model\":\"gemini/gemini-3.5-flash\",\"inPerM\":0.3,\"outPerM\":2.5,\"minOutputTokens\":2000},\"strong\":{\"model\":\"gemini/gemini-3.5-flash\",\"inPerM\":0.3,\"outPerM\":2.5,\"minOutputTokens\":2000}}"
   },
   "observability": { "enabled": true }
