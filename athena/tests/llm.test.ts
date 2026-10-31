@@ -60,7 +60,7 @@ describe('callModel', () => {
     assert.equal(h['x-prune-cache'], 'normalized');
     assert.equal(h['x-prune-run-id'], 'm_test');
     assert.equal(h['x-prune-run-budget-usd'], '0.050000');
-    assert.equal(h['x-prune-max-steps'], '3');
+    assert.equal(h['x-prune-max-steps'], '6');
     assert.equal(h['x-prune-customer-id'], ws.id);
     assert.equal(h['x-prune-feature-id'], 'answer');
     assert.match(h['idempotency-key'], /^[0-9a-f]{64}$/);

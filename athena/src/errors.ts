@@ -47,7 +47,7 @@ export const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
   budget_exhausted: 'Not enough allowance for this answer.',
   document_not_ready: 'This document is still being indexed. Try again in a moment.',
   shield_blocked: "Prune's safety checks blocked this request. Try rephrasing it.",
-  provider_auth_failed: 'We could not authenticate with the AI service. We stopped instead of retrying.',
+  provider_auth_failed: 'The AI service rejected our setup (credentials, credits or model access). This is not something you can fix, and we stopped instead of retrying.',
   provider_unavailable: 'The AI service is temporarily unavailable. Your documents and chats are saved.',
   billing_uncertain:
     'The connection dropped after your question was sent, so we cannot tell if it was billed. The estimated cost was counted against your allowance.',
@@ -105,7 +105,25 @@ export interface HttpVerdict {
   retry: boolean;
 }
 
-export function classifyHttp(status: number, shieldCode: string | null): HttpVerdict {
+/**
+ * Setup problems reported by Prune or the provider as a plain 4xx with no shield code, seen on the real service:
+ * 400 "Missing <provider> api key. Store one in the Prune vault", 400 "<provider> account has insufficient
+ * credits or quota", 404 not_found for a model the provider account cannot use. Not fixable by the user and
+ * pointless to retry, so they are configuration errors rather than "your request was not valid".
+ */
+const CONFIG_MESSAGE = /missing .*api key|insufficient (credits|quota)|credit balance|no credits|billing/i;
+
+function parseBody(body: string | undefined): { code?: string; error?: string } {
+  if (!body) return {};
+  try {
+    const j = JSON.parse(body) as { code?: unknown; error?: unknown };
+    return { code: typeof j.code === 'string' ? j.code : undefined, error: typeof j.error === 'string' ? j.error : undefined };
+  } catch {
+    return {};
+  }
+}
+
+export function classifyHttp(status: number, shieldCode: string | null, body?: string): HttpVerdict {
   if (shieldCode) {
     const s = shieldCode.toLowerCase();
     if (BUDGET_SHIELD_CODES.has(s)) return { code: 'budget_exhausted', retry: false };
@@ -114,6 +132,10 @@ export function classifyHttp(status: number, shieldCode: string | null): HttpVer
     if (POLICY_SHIELD_CODES.has(s)) return { code: 'provider_auth_failed', retry: false };
     if (s === 'run_budget_missing_run_id') return { code: 'validation_failed', retry: false };
     return { code: 'shield_blocked', retry: false };
+  }
+  if (status === 400 || status === 404) {
+    const b = parseBody(body);
+    if (CONFIG_MESSAGE.test(b.error ?? '') || (status === 404 && b.code === 'not_found')) return { code: 'provider_auth_failed', retry: false };
   }
   if (status === 429) return { code: 'rate_limited', retry: true };
   if (status === 401 || status === 403) return { code: 'provider_auth_failed', retry: false };

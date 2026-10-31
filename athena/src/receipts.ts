@@ -136,7 +136,12 @@ export interface ParsedReceipt {
   costMicro: number | null;
   costWithoutMicro: number | null;
   cacheHit: boolean | null;
+  /** The model that actually served the call: routed_model when Prune re-routed, else the requested one. */
   model: string | null;
+  /** Prune's output-cap mechanism shortened our max_tokens for this call. */
+  outputCapApplied: boolean | null;
+  /** Completion tokens as billed (for Gemini this includes hidden thinking tokens). */
+  completionTokens: number | null;
 }
 
 const COST_KEYS = ['cost_with_prune_usd', 'actual_cost_usd', 'total_cost_usd', 'cost_usd'];
@@ -168,7 +173,9 @@ export function extractReceipt(responseBody: string): ParsedReceipt | null {
   } catch {
     return null;
   }
-  const model = [fields['model'], fields['model_used'], fields['routed_model']].find((m) => typeof m === 'string');
+  // Real receipts (checked 2026-10-31) carry original_model and routed_model (null when not re-routed), not `model`.
+  const model = [fields['routed_model'], fields['model_used'], fields['model'], fields['original_model']].find((m) => typeof m === 'string' && m !== '');
+  const completion = fields['completion_tokens'];
   return {
     raw,
     fields,
@@ -176,6 +183,8 @@ export function extractReceipt(responseBody: string): ParsedReceipt | null {
     costWithoutMicro: usdField(fields, COST_WITHOUT_KEYS),
     cacheHit: typeof fields['cache_hit'] === 'boolean' ? (fields['cache_hit'] as boolean) : null,
     model: (model as string | undefined) ?? null,
+    outputCapApplied: typeof fields['output_cap_applied'] === 'boolean' ? (fields['output_cap_applied'] as boolean) : null,
+    completionTokens: typeof completion === 'number' && Number.isFinite(completion) ? completion : null,
   };
 }
 

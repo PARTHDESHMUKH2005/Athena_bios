@@ -7,6 +7,9 @@
 //   3. 'ok'
 // Modes: ok, 429, 429_spend_cap, 429_run_budget, 500, drop (connection lost after the request was
 // received), 401, 402, shield, no_receipt, cache_hit, odd_numbers, nocite, badjson, badtotal, slow.
+// Shapes seen on the real service: gemini (Gemini-native body, receipt has original_model), gemini_empty
+// (all output tokens spent on hidden thinking), truncated (finish_reason length + output cap applied),
+// missing_key, no_credits, model_404 (plain 4xx setup errors with no shield code).
 import { createServer } from 'node:http';
 import { generateKeyPairSync, sign, verify } from 'node:crypto';
 
@@ -75,9 +78,14 @@ export async function startMock({ port = 0 } = {}) {
     const ct = Math.ceil(content.length / 4);
     const odd = mode === 'odd_numbers';
     const hit = mode === 'cache_hit';
+    const gem = mode === 'gemini' || mode === 'gemini_empty';
+    const cut = mode === 'truncated';
     const fields = [
       ['receipt_id', '"rcpt_mock"', '"rcpt_mock"'],
-      ['model', '"mock-gpt"', '"mock-gpt"'],
+      ['original_model', gem ? '"gemini-3.5-flash"' : '"mock-gpt"', gem ? '"gemini-3.5-flash"' : '"mock-gpt"'],
+      ['routed_model', 'null', 'null'],
+      ['output_cap_applied', cut ? 'true' : 'false', cut ? 'true' : 'false'],
+      ['completion_tokens', String(gem ? ct + 57 : ct), String(gem ? ct + 57 : ct)],
       ['cost_with_prune_usd', hit ? '0' : odd ? '5e-05' : '0.000412', hit ? '0' : odd ? '5e-05' : '0.000412'],
       ['cost_without_prune_usd', odd ? '1.0' : '0.0012', odd ? '1.0' : '0.0012'],
       ['cache_hit', hit ? 'true' : 'false', hit ? 'true' : 'false'],
@@ -85,8 +93,14 @@ export async function startMock({ port = 0 } = {}) {
     ];
     if (odd) fields.push(['note', '"héllo wörld"', pyAscii('héllo wörld')]);
     const meta = mode === 'no_receipt' ? 'null' : receipt(fields);
+    if (gem) {
+      const parts = mode === 'gemini_empty' ? '{}' : `{"parts":[{"text":${JSON.stringify(content)}}],"role":"model"}`;
+      return `{"candidates":[{"content":${parts},"finishReason":"${mode === 'gemini_empty' ? 'MAX_TOKENS' : 'STOP'}","index":0}],` +
+        `"usageMetadata":{"promptTokenCount":${pt},"candidatesTokenCount":${mode === 'gemini_empty' ? 0 : ct},"thoughtsTokenCount":57,"totalTokenCount":${pt + ct + 57}},` +
+        `"modelVersion":"gemini-3.5-flash","responseId":"mock-g1","prune_metadata":${meta}}`;
+    }
     const body =
-      `{"id":"mock-1","object":"chat.completion","model":"mock-gpt","choices":[{"index":0,"message":{"role":"assistant","content":${JSON.stringify(content)}},"finish_reason":"stop"}],` +
+      `{"id":"mock-1","object":"chat.completion","model":"mock-gpt","choices":[{"index":0,"message":{"role":"assistant","content":${JSON.stringify(content)}},"finish_reason":"${cut ? 'length' : 'stop'}"}],` +
       `"usage":{"prompt_tokens":${pt},"completion_tokens":${ct},"total_tokens":${pt + ct}},"prune_metadata":${meta}}`;
     return body;
   }
@@ -134,11 +148,15 @@ export async function startMock({ port = 0 } = {}) {
         if (mode === '429_run_budget') { res.writeHead(429, { ...json, 'x-prune-shield-code': 'run_budget' }).end('{"error":"run budget"}'); return; }
         if (mode === 'shield_unavailable') { res.writeHead(503, { ...json, 'x-prune-shield-code': 'shield_unavailable', 'retry-after': '0' }).end('{"error":"shield unavailable"}'); return; }
         if (mode === 'agent_loop') { res.writeHead(429, { ...json, 'x-prune-shield-code': 'agent_loop' }).end('{"error":"loop"}'); return; }
+        if (mode === 'missing_key') { res.writeHead(400, json).end('{"error":"Missing openai api key. Store one in the Prune vault (Connect -> Providers) or pass user_api_key. Vault providers on this account: gemini.","code":"http_error"}'); return; }
+        if (mode === 'no_credits') { res.writeHead(400, json).end('{"error":"anthropic account has insufficient credits or quota","code":"provider_upstream_4xx","provider":"anthropic"}'); return; }
+        if (mode === 'model_404') { res.writeHead(404, json).end('{"error":"gemini rejected the request (404)","code":"not_found","provider":"gemini"}'); return; }
         if (mode === '500') { res.writeHead(500, json).end('{"error":"upstream"}'); return; }
         if (mode === '401') { res.writeHead(401, json).end('{"error":"bad key"}'); return; }
         if (mode === '402') { res.writeHead(402, json).end('{"error":"payment required"}'); return; }
         if (mode === 'shield') { res.writeHead(403, { ...json, 'x-prune-shield-code': 'content_policy' }).end('{"error":"blocked"}'); return; }
-        res.writeHead(200, { ...json, 'x-prune-routed-model': 'mock-gpt-routed' }).end(completion(body, mode));
+        const okHeaders = mode === 'gemini' || mode === 'gemini_empty' ? { ...json, 'x-prune-provider': 'gemini' } : { ...json, 'x-prune-routed-model': 'mock-gpt-routed', ...(mode === 'truncated' ? { 'x-prune-output-cap-applied': 'true' } : {}) };
+        res.writeHead(200, okHeaders).end(completion(body, mode));
         return;
       }
       res.writeHead(404).end();
