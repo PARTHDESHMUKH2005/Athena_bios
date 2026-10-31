@@ -344,34 +344,104 @@ function Orbit() {
     const t = setInterval(() => setI((x) => (x + 1) % STEPS.length), 3600);
     return () => clearInterval(t);
   }, [tick]);
-  const cx = 280, cy = 250, r = 190;
+  const cx = 280, cy = 260, r = 180;
+  const activeAngle = ((-90 + i * (360 / STEPS.length)) * Math.PI) / 180;
+  const activeX = cx + r * Math.cos(activeAngle);
+  const activeY = cy + r * Math.sin(activeAngle);
+
   return (
-    <section className="inv pad" id="how" aria-label="How it works">
+    <section className="inv pad orbit-sec" id="how" aria-label="How it works">
       <div className="wrap orbit">
-        <svg className="orbit__svg" viewBox="0 0 560 520" role="img" aria-label="The seven steps behind every answer">
-          <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,.35)" />
-          {STEPS.map((s, k) => {
-            const a = ((-90 + k * (360 / STEPS.length)) * Math.PI) / 180;
-            const x = cx + r * Math.cos(a);
-            const y = cy + r * Math.sin(a);
-            const cos = Math.cos(a);
-            const sin = Math.sin(a);
-            return (
-              <g key={s[0]} className="orbit__node" tabIndex={0} role="button" aria-label={s[1]}
-                onClick={() => { setI(k); setTick((t) => t + 1); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setI(k); setTick((t) => t + 1); } }}>
-                <circle cx={x} cy={y} r={22} fill="transparent" />
-                <circle cx={x} cy={y} r={k === i ? 7 : 6} fill={k === i ? '#fff' : '#000'} stroke="#fff" strokeWidth={1.3} />
-                <text className="orbit__lbl" x={x + (cos > 0.2 ? 18 : cos < -0.2 ? -18 : 0)} y={y + (sin > 0.5 ? 30 : sin < -0.5 ? -16 : 4)}
-                  textAnchor={cos > 0.2 ? 'start' : cos < -0.2 ? 'end' : 'middle'} opacity={k === i ? 1 : 0.6}>{s[0]}</text>
-              </g>
-            );
-          })}
-        </svg>
-        <div>
-          <h2 className="h-lg" style={{ fontSize: 'clamp(30px,3.6vw,48px)' }}>One answer, seven checks.</h2>
-          <p className="muted" style={{ marginTop: 20, maxWidth: '44ch' }}>Every question goes through the same path, so the cost, the model and the proof are always there.</p>
-          <div className="orbit__text" aria-live="polite"><h4>{STEPS[i]![1]}</h4><p>{STEPS[i]![2]}</p></div>
+        <div className="orbit__visual">
+          <svg className="orbit__svg" viewBox="0 0 560 520" role="img" aria-label="The seven steps behind every answer">
+            <defs>
+              <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#f26b3a" stopOpacity="0.25" />
+                <stop offset="60%" stopColor="#f26b3a" stopOpacity="0.05" />
+                <stop offset="100%" stopColor="#f26b3a" stopOpacity="0" />
+              </radialGradient>
+              <filter id="glowFilter" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+            </defs>
+
+            <circle cx={cx} cy={cy} r={r + 32} fill="none" stroke="rgba(255,255,255,0.08)" strokeDasharray="4 6" className="orbit__ring-outer" />
+            <circle cx={cx} cy={cy} r={r} fill="url(#centerGlow)" stroke="rgba(255,255,255,0.22)" strokeWidth={1.5} />
+            <circle cx={cx} cy={cy} r={72} fill="rgba(10,10,10,0.85)" stroke="rgba(255,255,255,0.12)" />
+            <circle cx={cx} cy={cy} r={46} fill="none" stroke="rgba(242,107,58,0.3)" strokeDasharray="2 4" />
+            <text x={cx} y={cy - 4} textAnchor="middle" fill="#fff" fontSize="11" fontWeight="700" letterSpacing="0.15em">ATHENA</text>
+            <text x={cx} y={cy + 14} textAnchor="middle" fill="#f26b3a" fontSize="10" letterSpacing="0.1em">PIPELINE</text>
+
+            <line x1={cx} y1={cy} x2={activeX} y2={activeY} stroke="#f26b3a" strokeWidth={1.5} strokeDasharray="3 3" opacity={0.7} />
+
+            {STEPS.map((s, k) => {
+              const a = ((-90 + k * (360 / STEPS.length)) * Math.PI) / 180;
+              const x = cx + r * Math.cos(a);
+              const y = cy + r * Math.sin(a);
+              const cos = Math.cos(a);
+              const sin = Math.sin(a);
+              const isSelected = k === i;
+              return (
+                <g key={s[0]} className={`orbit__node${isSelected ? ' active' : ''}`} tabIndex={0} role="button" aria-label={s[1]}
+                  onClick={() => { setI(k); setTick((t) => t + 1); }}
+                  onMouseEnter={() => { setI(k); setTick((t) => t + 1); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setI(k); setTick((t) => t + 1); } }}>
+                  <circle cx={x} cy={y} r={28} fill="transparent" />
+                  {isSelected && (
+                    <circle cx={x} cy={y} r={16} fill="none" stroke="#f26b3a" strokeWidth={1.5} className="orbit__pulse" />
+                  )}
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={isSelected ? 9 : 6}
+                    fill={isSelected ? '#f26b3a' : '#0d0d0d'}
+                    stroke={isSelected ? '#fff' : 'rgba(255,255,255,0.6)'}
+                    strokeWidth={isSelected ? 2 : 1.4}
+                    filter={isSelected ? 'url(#glowFilter)' : undefined}
+                  />
+                  <text
+                    className="orbit__lbl"
+                    x={x + (cos > 0.2 ? 22 : cos < -0.2 ? -22 : 0)}
+                    y={y + (sin > 0.5 ? 32 : sin < -0.5 ? -18 : 5)}
+                    textAnchor={cos > 0.2 ? 'start' : cos < -0.2 ? 'end' : 'middle'}
+                    opacity={isSelected ? 1 : 0.65}
+                    fill={isSelected ? '#f26b3a' : '#fff'}
+                    fontWeight={isSelected ? '700' : '500'}
+                  >
+                    {s[0]}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+        <div className="orbit__side">
+          <div style={{ marginBottom: 20 }}><Tag>How it works</Tag><Tag>Pipeline</Tag></div>
+          <h2 className="h-lg" style={{ fontSize: 'clamp(32px,3.8vw,52px)' }}>One answer, seven checks.</h2>
+          <p className="muted" style={{ marginTop: 16, maxWidth: '44ch' }}>Every question passes through this exact deterministic flow: cost reserved upfront, retrieval restricted to relevant pages, and cryptographic proof signed by Prune.</p>
+          
+          <div className="orbit__hud-card" aria-live="polite">
+            <div className="orbit__hud-top">
+              <span className="orbit__hud-step">Step 0{i + 1} of 0{STEPS.length}</span>
+              <span className="orbit__hud-status"><i className="pulse-dot" /> Live Stage</span>
+            </div>
+            <h4 className="orbit__hud-title">{STEPS[i]![1]}</h4>
+            <p className="orbit__hud-desc">{STEPS[i]![2]}</p>
+            <div className="orbit__stepper">
+              {STEPS.map((step, idx) => (
+                <button
+                  key={step[0]}
+                  type="button"
+                  className={`orbit__step-pill${idx === i ? ' on' : ''}`}
+                  onClick={() => { setI(idx); setTick((t) => t + 1); }}
+                  aria-label={`Jump to step ${idx + 1}: ${step[0]}`}
+                >
+                  {step[0]}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -400,20 +470,80 @@ function Activity() {
     return () => { timers.forEach(clearTimeout); clearInterval(loop); };
   }, []);
   return (
-    <section className="pad" id="activity">
+    <section className="pad activity-sec" id="activity">
       <div className="wrap">
         <div style={{ marginBottom: 32 }}><Tag>Features</Tag><Tag>Activity</Tag></div>
         <h2 className="h-xl" style={{ marginBottom: 56 }}>Every answer shows its work</h2>
-        <div className="panel" aria-label="Example activity timeline">
-          <div className="steps">
-            {DEMO_STEPS.map((s, k) => (
-              <div key={s.step} className={k < shown ? '' : 'off step-wrap'} style={{ opacity: k < shown ? 1 : 0.25, transition: 'opacity .35s' }}><StepCard step={s} /></div>
-            ))}
+        <div className="panel panel--rich" aria-label="Example activity timeline">
+          <div className="panel__chrome">
+            <div className="panel__dots">
+              <span className="panel__dot" />
+              <span className="panel__dot" />
+              <span className="panel__dot" />
+            </div>
+            <span className="panel__title">athena-trace // session #08492 · live stream</span>
+            <span className="panel__badge">● Active Pipeline</span>
+          </div>
+          <div className="panel__grid">
+            <div className="steps-container">
+              <div className="steps">
+                {DEMO_STEPS.map((s, k) => (
+                  <div key={s.step} className={k < shown ? '' : 'off step-wrap'} style={{ opacity: k < shown ? 1 : 0.25, transition: 'opacity .35s' }}>
+                    <StepCard step={s} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="telemetry">
+              <div className="telemetry__title">
+                <span>Telemetry & Proof</span>
+                <span className="telemetry__live">Live stream</span>
+              </div>
+              <div className="telemetry__card">
+                <div className="telemetry__row">
+                  <b>Target Document</b>
+                  <span>MSA_Northwind.pdf</span>
+                </div>
+                <div className="telemetry__row">
+                  <b>Extracted Scope</b>
+                  <span>3 sections · p. 3, 5, 7</span>
+                </div>
+                <div className="telemetry__row">
+                  <b>Model Engine</b>
+                  <span>gemini-1.5-flash (economy)</span>
+                </div>
+                <div className="telemetry__row">
+                  <b>Spend Cap Check</b>
+                  <span className="ok-text">$0.000310 of $1.000000 ✓</span>
+                </div>
+                <div className="telemetry__row">
+                  <b>Prune Receipt</b>
+                  <span className="ok-text">Ed25519 Validated ✓</span>
+                </div>
+              </div>
+              <div className="telemetry__meter">
+                <div className="telemetry__meter-head">
+                  <span>Latency Budget</span>
+                  <span>1,670 ms</span>
+                </div>
+                <div className="telemetry__meter-bar">
+                  <div className="telemetry__meter-fill" style={{ width: '48%' }} />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div className="two" style={{ marginTop: 72 }}>
-          <div><span className="label muted">Activity</span><h3 className="h-md" style={{ marginTop: 28 }}>Watch the steps, not a spinner</h3><p style={{ marginTop: 28 }}>While a question runs, Athena lists what it is doing: which sections it found, which model it chose, how much it reserved, and whether the receipt checked out. When it is done, the same list stays with the answer.</p></div>
-          <div><span className="label muted">Why it matters</span><h3 className="h-md" style={{ marginTop: 28 }}>Trust you can inspect</h3><p style={{ marginTop: 28 }}>Each step records what was decided and why, without storing your document text in the log. If something fails, the list ends where it stopped and says what is safe.</p></div>
+          <div className="feature-card">
+            <span className="label muted">Activity</span>
+            <h3 className="h-md" style={{ marginTop: 24 }}>Watch the steps, not a spinner</h3>
+            <p style={{ marginTop: 18 }}>While a question runs, Athena lists what it is doing: which sections it found, which model it chose, how much it reserved, and whether the receipt checked out. When it is done, the same list stays with the answer.</p>
+          </div>
+          <div className="feature-card">
+            <span className="label muted">Why it matters</span>
+            <h3 className="h-md" style={{ marginTop: 24 }}>Trust you can inspect</h3>
+            <p style={{ marginTop: 18 }}>Each step records what was decided and why, without storing your document text in the log. If something fails, the list ends where it stopped and says what is safe.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -450,7 +580,22 @@ function Proof() {
           <div>
             <h3 className="h-md">Check the receipts yourself</h3>
             <p className="muted" style={{ marginTop: 14, fontSize: 15 }}>Every real answer carries a receipt signed by Prune. Export them all from the workspace and verify with one command.</p>
-            <div className="mono" style={{ marginTop: 20 }}>{`$ node scripts/verify-receipts.mjs receipts.jsonl\n\nreceipts checked : 18\nsignature valid  : 18\ntotal from receipts vs recorded: match\nALL RECEIPTS VERIFIED`}</div>
+            <div className="mono mono--term" style={{ marginTop: 20 }}>
+              <div className="mono__head">
+                <div className="panel__dots">
+                  <span className="panel__dot" />
+                  <span className="panel__dot" />
+                  <span className="panel__dot" />
+                </div>
+                <span>verify-receipts.mjs — bash</span>
+                <span style={{ color: '#5fd08f', fontSize: 10 }}>● Ed25519</span>
+              </div>
+              <div className="mono__body">
+                <span style={{ color: '#58a6ff' }}>$ node scripts/verify-receipts.mjs receipts.jsonl</span>
+                {`\n\nreceipts checked : 18\nsignature valid  : 18\ntotal from receipts vs recorded: match\n`}
+                <span style={{ color: '#5fd08f', fontWeight: 'bold' }}>ALL RECEIPTS VERIFIED ✓</span>
+              </div>
+            </div>
             <p className="muted" style={{ marginTop: 14, fontSize: 13 }}>Example output format from the project's verifier. It catches an edited cost, an edited receipt and a wrong key.</p>
           </div>
         </div>
@@ -469,13 +614,13 @@ function Proof() {
   );
 }
 
-const SAFETY: [string, string][] = [
-  ['Fenced documents', 'Text from a file is data, never instructions. It cannot close its own fence.'],
-  ['Answers are scanned', 'Secrets, links the document never contained and risky commands are removed.'],
-  ['Two budget layers', 'Athena reserves before the call. Prune enforces the same cap on its side.'],
-  ['Retries that stop', 'Spend caps, bad keys and uncertain billing are never retried blindly.'],
-  ['No keys in code', 'Provider keys live in the Prune vault. The app holds one Prune key.'],
-  ['Signed receipts', 'Cost comes from the receipt. Verify it offline, without trusting us.'],
+const SAFETY: [string, string, string][] = [
+  ['Fenced documents', 'Text from a file is data, never instructions. It cannot close its own fence.', '01 / SHIELD'],
+  ['Answers are scanned', 'Secrets, links the document never contained and risky commands are removed.', '02 / SCANNER'],
+  ['Two budget layers', 'Athena reserves before the call. Prune enforces the same cap on its side.', '03 / BUDGET'],
+  ['Retries that stop', 'Spend caps, bad keys and uncertain billing are never retried blindly.', '04 / BREAKER'],
+  ['No keys in code', 'Provider keys live in the Prune vault. The app holds one Prune key.', '05 / VAULT'],
+  ['Signed receipts', 'Cost comes from the receipt. Verify it offline, without trusting us.', '06 / PROOF'],
 ];
 
 const FAQ: [string, string][] = [
@@ -491,12 +636,20 @@ const FAQ: [string, string][] = [
 function SafetyAndFaq() {
   return (
     <>
-      <section className="pad" style={{ paddingTop: 0 }}>
+      <section className="pad safety-sec" id="safety">
         <div className="wrap">
-          <div style={{ marginBottom: 28 }}><Tag>Safety</Tag></div>
+          <div style={{ marginBottom: 28 }}><Tag>Safety</Tag><Tag>Hard Bounds</Tag></div>
           <h2 className="h-lg" style={{ marginBottom: 48, maxWidth: '16ch' }}>Safe when things go wrong.</h2>
           <div className="grid-cells">
-            {SAFETY.map(([h, p]) => <div className="cell" key={h}><div><h3>{h}</h3><p>{p}</p></div></div>)}
+            {SAFETY.map(([h, p, tag]) => (
+              <div className="cell" key={h}>
+                <div>
+                  <span className="cell__num">{tag}</span>
+                  <h3>{h}</h3>
+                  <p>{p}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
