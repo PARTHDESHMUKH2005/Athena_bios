@@ -9,9 +9,30 @@
 .startpage .start { margin-bottom: 48px; }
 .startpage .logo { color: var(--fg); }
 
-/* app shell */
-.app { height: 100dvh; display: flex; flex-direction: column; }
-.appbar { display: flex; align-items: center; gap: 18px; height: 56px; flex: none; border-bottom: 1px solid var(--fg); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+/* app shell – light theme scoped to workspace only */
+.app {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  --bg: #ffffff;
+  --fg: #0b0b0b;
+  --muted: #6a6a66;
+  --line: #d9d9d4;
+  --panel: #f4f4f1;
+  --btn-bg: #0b0b0b;
+  --btn-fg: #ffffff;
+  --ok: #1d7a4b;
+  --ok-bg: #e4f3ea;
+  --warn: #8f5600;
+  --warn-bg: #fff0cf;
+  --bad: #b3261e;
+  --bad-bg: #fde8e6;
+  --card: #ffffff;
+  --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 14px rgba(0,0,0,.06);
+  background: var(--bg);
+  color: var(--fg);
+}
+.appbar { display: flex; align-items: center; gap: 18px; height: 56px; flex: none; border-bottom: 1px solid var(--line); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 .appbar .logo { font-size: 20px; }
 .appbar .grow { flex: 1; }
 .appbar__bud { white-space: nowrap; }
